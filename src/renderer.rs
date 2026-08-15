@@ -1,5 +1,5 @@
 use crate::{
-    config::{FOV_FACTOR, MINIMAP_CELL_SIZE, MINIMAP_PADDING},
+    config::{FOV_FACTOR, JUMP_CAMERA_SCALE, MINIMAP_CELL_SIZE, MINIMAP_PADDING},
     map::Map,
     player::Player,
 };
@@ -30,14 +30,17 @@ impl Renderer {
     }
 
     pub fn render(&mut self, map: &Map, player: &Player, fps: u32) {
-        self.draw_background();
+        let camera_offset = (player.height * JUMP_CAMERA_SCALE) as i32;
+
+        self.draw_background(camera_offset);
         self.draw_walls(map, player);
         self.draw_minimap(map, player);
         self.draw_text(12, 12, &format!("FPS {}", fps), 0xffffff, 3);
     }
 
-    fn draw_background(&mut self) {
-        let horizon = self.height / 2;
+    fn draw_background(&mut self, camera_offset: i32) {
+        let horizon =
+            (self.height as i32 / 2 + camera_offset).clamp(1, self.height as i32 - 1) as usize;
 
         for y in 0..horizon {
             let shade = 38 + (y as u32 * 34 / horizon as u32);
@@ -63,9 +66,10 @@ impl Renderer {
             let ray_dir_y = dir_y + plane_y * camera_x;
             let hit = cast_ray(map, player.x, player.y, ray_dir_x, ray_dir_y);
             let line_height = (self.height as f32 / hit.distance.max(0.001)) as i32;
-            let draw_start = (-line_height / 2 + self.height as i32 / 2).max(0) as usize;
-            let draw_end =
-                (line_height / 2 + self.height as i32 / 2).min(self.height as i32 - 1) as usize;
+            let camera_offset = (player.height * JUMP_CAMERA_SCALE) as i32;
+            let center_y = self.height as i32 / 2 + camera_offset;
+            let draw_start = (-line_height / 2 + center_y).max(0) as usize;
+            let draw_end = (line_height / 2 + center_y).min(self.height as i32 - 1) as usize;
             let color = shade_wall(wall_color(hit.wall_id), hit.side, hit.distance);
 
             for y in draw_start..=draw_end {

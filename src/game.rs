@@ -36,11 +36,14 @@ impl Game {
 
         window.set_target_fps(TARGET_FPS);
 
+        let map = Map::level_one();
+        let (player_x, player_y, player_angle) = map.player_spawn();
+
         Ok(Self {
             window,
             renderer: Renderer::new(SCREEN_WIDTH, SCREEN_HEIGHT),
-            map: Map::level_one(),
-            player: Player::new(2.5, 2.5, 0.0),
+            map,
+            player: Player::new(player_x, player_y, player_angle),
             previous_frame: Instant::now(),
             fps_timer: Instant::now(),
             frame_counter: 0,

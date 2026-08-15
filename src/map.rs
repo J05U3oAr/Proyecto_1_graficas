@@ -47,6 +47,10 @@ impl Map {
         self.height
     }
 
+    pub fn player_spawn(&self) -> (f32, f32, f32) {
+        (2.5, 1.5, 0.15)
+    }
+
     pub fn tile_at(&self, x: i32, y: i32) -> u8 {
         if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
             return 1;
