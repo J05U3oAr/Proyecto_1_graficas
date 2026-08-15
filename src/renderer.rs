@@ -119,6 +119,58 @@ impl Renderer {
         let line_x = player_x + (player.angle.cos() * 12.0) as i32;
         let line_y = player_y + (player.angle.sin() * 12.0) as i32;
         self.draw_line(player_x, player_y, line_x, line_y, 0xfff36b);
+
+        let cooldown_ratio = player.dash_cooldown_ratio();
+
+        if cooldown_ratio > 0.0 {
+            self.draw_dash_cooldown_indicator(
+                (origin_x + map_width / 2) as i32,
+                (origin_y + map_height + 24) as i32,
+                cooldown_ratio,
+            );
+        }
+    }
+
+    fn draw_dash_cooldown_indicator(&mut self, center_x: i32, center_y: i32, ratio: f32) {
+        self.fill_circle(center_x, center_y, 15, 0x101319);
+        self.fill_clockwise_circle_slice(center_x, center_y, 12, ratio, 0xffc857);
+        self.fill_circle(center_x, center_y, 7, 0x202631);
+        self.fill_circle(center_x, center_y, 3, 0xffffff);
+    }
+
+    fn fill_clockwise_circle_slice(
+        &mut self,
+        center_x: i32,
+        center_y: i32,
+        radius: i32,
+        ratio: f32,
+        color: u32,
+    ) {
+        let radius_sq = radius * radius;
+        let sweep = ratio.clamp(0.0, 1.0) * std::f32::consts::TAU;
+
+        for y in -radius..=radius {
+            for x in -radius..=radius {
+                if x * x + y * y > radius_sq {
+                    continue;
+                }
+
+                let mut angle = (y as f32).atan2(x as f32) + std::f32::consts::FRAC_PI_2;
+
+                if angle < 0.0 {
+                    angle += std::f32::consts::TAU;
+                }
+
+                if angle <= sweep {
+                    let px = center_x + x;
+                    let py = center_y + y;
+
+                    if px >= 0 && py >= 0 {
+                        self.put_pixel(px as usize, py as usize, color);
+                    }
+                }
+            }
+        }
     }
 
     fn draw_horizontal_line(&mut self, y: usize, color: u32) {

@@ -28,6 +28,10 @@ impl Player {
         }
     }
 
+    pub fn dash_cooldown_ratio(&self) -> f32 {
+        (self.dash_cooldown / DASH_COOLDOWN).clamp(0.0, 1.0)
+    }
+
     pub fn update(&mut self, input: &InputState, map: &Map, dt: f32) {
         self.dash_cooldown = (self.dash_cooldown - dt).max(0.0);
         let rotation_step = ROTATION_SPEED * dt;
