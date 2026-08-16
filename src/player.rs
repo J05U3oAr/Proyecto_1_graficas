@@ -1,7 +1,6 @@
 use crate::{
     config::{
-        COLLISION_STEP, DASH_COOLDOWN, DASH_DISTANCE, GRAVITY, JUMP_SPEED, MOVE_SPEED,
-        PLAYER_RADIUS, ROTATION_SPEED,
+        COLLISION_STEP, DASH_COOLDOWN, DASH_DISTANCE, MOVE_SPEED, PLAYER_RADIUS, ROTATION_SPEED,
     },
     input::InputState,
     map::Map,
@@ -11,9 +10,12 @@ pub struct Player {
     pub x: f32,
     pub y: f32,
     pub angle: f32,
-    pub height: f32,
-    vertical_velocity: f32,
+    pub lives: u8,
     dash_cooldown: f32,
+    touched_hazard: bool,
+    spawn_x: f32,
+    spawn_y: f32,
+    spawn_angle: f32,
 }
 
 impl Player {
@@ -22,9 +24,12 @@ impl Player {
             x,
             y,
             angle,
-            height: 0.0,
-            vertical_velocity: 0.0,
+            lives: 3,
             dash_cooldown: 0.0,
+            touched_hazard: false,
+            spawn_x: x,
+            spawn_y: y,
+            spawn_angle: angle,
         }
     }
 
@@ -32,7 +37,12 @@ impl Player {
         (self.dash_cooldown / DASH_COOLDOWN).clamp(0.0, 1.0)
     }
 
+    pub fn touched_hazard(&self) -> bool {
+        self.touched_hazard
+    }
+
     pub fn update(&mut self, input: &InputState, map: &Map, dt: f32) {
+        self.touched_hazard = false;
         self.dash_cooldown = (self.dash_cooldown - dt).max(0.0);
         let rotation_step = ROTATION_SPEED * dt;
 
@@ -51,7 +61,6 @@ impl Player {
         let mut delta_x = 0.0;
         let mut delta_y = 0.0;
         let movement_step = MOVE_SPEED * dt;
-        self.update_jump(input, dt);
 
         if input.move_forward {
             delta_x += dir_x * movement_step;
@@ -81,18 +90,16 @@ impl Player {
         }
     }
 
-    fn update_jump(&mut self, input: &InputState, dt: f32) {
-        if input.jump && self.height == 0.0 {
-            self.vertical_velocity = JUMP_SPEED;
-        }
+    pub fn take_hit_and_respawn(&mut self) {
+        self.lives = self.lives.saturating_sub(1).max(1);
+        self.respawn();
+    }
 
-        self.height += self.vertical_velocity * dt;
-        self.vertical_velocity -= GRAVITY * dt;
-
-        if self.height <= 0.0 {
-            self.height = 0.0;
-            self.vertical_velocity = 0.0;
-        }
+    pub fn respawn(&mut self) {
+        self.x = self.spawn_x;
+        self.y = self.spawn_y;
+        self.angle = self.spawn_angle;
+        self.touched_hazard = false;
     }
 
     fn move_with_collision(&mut self, delta_x: f32, delta_y: f32, map: &Map) {
@@ -117,6 +124,10 @@ impl Player {
 
         if map.can_stand_at(self.x, next_y, PLAYER_RADIUS) {
             self.y = next_y;
+        }
+
+        if map.player_touches_hazard(self.x, self.y, PLAYER_RADIUS) {
+            self.touched_hazard = true;
         }
     }
 }

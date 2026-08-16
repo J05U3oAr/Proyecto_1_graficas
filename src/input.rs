@@ -8,7 +8,6 @@ pub struct InputState {
     pub rotate_right: bool,
     pub strafe_left: bool,
     pub strafe_right: bool,
-    pub jump: bool,
     pub dash: bool,
 }
 
@@ -21,7 +20,6 @@ impl InputState {
             rotate_right: window.is_key_down(Key::D) || window.is_key_down(Key::Right),
             strafe_left: window.is_key_down(Key::Z),
             strafe_right: window.is_key_down(Key::C),
-            jump: window.is_key_pressed(Key::Space, KeyRepeat::No),
             dash: window.is_key_pressed(Key::Q, KeyRepeat::No),
         }
     }

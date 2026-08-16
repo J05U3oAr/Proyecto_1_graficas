@@ -1,6 +1,9 @@
 use crate::{
-    config::{FOV_FACTOR, JUMP_CAMERA_SCALE, MINIMAP_CELL_SIZE, MINIMAP_PADDING},
-    map::Map,
+    config::{FOV_FACTOR, MINIMAP_CELL_SIZE, MINIMAP_PADDING},
+    map::{
+        Map, TILE_EXIT, TILE_FLOOR, TILE_GATE, TILE_HAZARD, TILE_KEY, TILE_METAL, TILE_RUINS,
+        TILE_SWITCH, TILE_WALL,
+    },
     player::Player,
 };
 
@@ -8,6 +11,7 @@ pub struct Renderer {
     width: usize,
     height: usize,
     buffer: Vec<u32>,
+    depth_buffer: Vec<f32>,
 }
 
 struct RayHit {
@@ -22,6 +26,7 @@ impl Renderer {
             width,
             height,
             buffer: vec![0; width * height],
+            depth_buffer: vec![f32::INFINITY; width],
         }
     }
 
@@ -29,18 +34,16 @@ impl Renderer {
         &self.buffer
     }
 
-    pub fn render(&mut self, map: &Map, player: &Player, fps: u32) {
-        let camera_offset = (player.height * JUMP_CAMERA_SCALE) as i32;
-
-        self.draw_background(camera_offset);
+    pub fn render(&mut self, map: &Map, player: &Player, fps: u32, message: &str) {
+        self.draw_background();
         self.draw_walls(map, player);
+        self.draw_sprites(map, player);
         self.draw_minimap(map, player);
-        self.draw_text(12, 12, &format!("FPS {}", fps), 0xffffff, 3);
+        self.draw_hud(map, player, fps, message);
     }
 
-    fn draw_background(&mut self, camera_offset: i32) {
-        let horizon =
-            (self.height as i32 / 2 + camera_offset).clamp(1, self.height as i32 - 1) as usize;
+    fn draw_background(&mut self) {
+        let horizon = self.height / 2;
 
         for y in 0..horizon {
             let shade = 38 + (y as u32 * 34 / horizon as u32);
@@ -65,15 +68,77 @@ impl Renderer {
             let ray_dir_x = dir_x + plane_x * camera_x;
             let ray_dir_y = dir_y + plane_y * camera_x;
             let hit = cast_ray(map, player.x, player.y, ray_dir_x, ray_dir_y);
+            self.depth_buffer[screen_x] = hit.distance;
+
             let line_height = (self.height as f32 / hit.distance.max(0.001)) as i32;
-            let camera_offset = (player.height * JUMP_CAMERA_SCALE) as i32;
-            let center_y = self.height as i32 / 2 + camera_offset;
+            let center_y = self.height as i32 / 2;
             let draw_start = (-line_height / 2 + center_y).max(0) as usize;
             let draw_end = (line_height / 2 + center_y).min(self.height as i32 - 1) as usize;
             let color = shade_wall(wall_color(hit.wall_id), hit.side, hit.distance);
 
             for y in draw_start..=draw_end {
                 self.put_pixel(screen_x, y, color);
+            }
+        }
+    }
+
+    fn draw_sprites(&mut self, map: &Map, player: &Player) {
+        let mut sprites = Vec::new();
+
+        for y in 0..map.height() {
+            for x in 0..map.width() {
+                let tile = map.tile_at(x as i32, y as i32);
+
+                if matches!(tile, TILE_HAZARD | TILE_KEY | TILE_SWITCH | TILE_EXIT) {
+                    let sprite_x = x as f32 + 0.5;
+                    let sprite_y = y as f32 + 0.5;
+                    let distance = (sprite_x - player.x).hypot(sprite_y - player.y);
+                    sprites.push((distance, sprite_x, sprite_y, tile));
+                }
+            }
+        }
+
+        sprites.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        let dir_x = player.angle.cos();
+        let dir_y = player.angle.sin();
+        let plane_x = -dir_y * FOV_FACTOR;
+        let plane_y = dir_x * FOV_FACTOR;
+        let inv_det = 1.0 / (plane_x * dir_y - dir_x * plane_y);
+
+        for (_, sprite_x, sprite_y, tile) in sprites {
+            let rel_x = sprite_x - player.x;
+            let rel_y = sprite_y - player.y;
+            let transform_x = inv_det * (dir_y * rel_x - dir_x * rel_y);
+            let transform_y = inv_det * (-plane_y * rel_x + plane_x * rel_y);
+
+            if transform_y <= 0.05 {
+                continue;
+            }
+
+            let screen_x = ((self.width as f32 / 2.0) * (1.0 + transform_x / transform_y)) as i32;
+            let size_scale = if tile == TILE_HAZARD { 0.62 } else { 0.46 };
+            let sprite_size = (self.height as f32 * size_scale / transform_y.abs()) as i32;
+            let center_y = self.height as i32 / 2;
+            let start_y = (-sprite_size / 2 + center_y).max(0);
+            let end_y = (sprite_size / 2 + center_y).min(self.height as i32 - 1);
+            let start_x = (-sprite_size / 2 + screen_x).max(0);
+            let end_x = (sprite_size / 2 + screen_x).min(self.width as i32 - 1);
+
+            for stripe in start_x..=end_x {
+                let stripe_index = stripe as usize;
+
+                if transform_y >= self.depth_buffer[stripe_index] {
+                    continue;
+                }
+
+                for y in start_y..=end_y {
+                    if let Some(color) =
+                        sprite_color(tile, stripe - start_x, y - start_y, sprite_size.max(1))
+                    {
+                        self.put_pixel(stripe_index, y as usize, color);
+                    }
+                }
             }
         }
     }
@@ -95,11 +160,11 @@ impl Renderer {
 
         for y in 0..map.height() {
             for x in 0..map.width() {
-                let tile = map.tile_at(x as i32, y as i32);
-                let color = if tile == 0 {
+                let tile = map.displayed_tile_at(x as i32, y as i32);
+                let color = if tile == TILE_FLOOR {
                     0x222834
                 } else {
-                    wall_color(tile)
+                    minimap_color(tile)
                 };
 
                 self.fill_rect(
@@ -129,6 +194,29 @@ impl Renderer {
                 cooldown_ratio,
             );
         }
+    }
+
+    fn draw_hud(&mut self, map: &Map, player: &Player, fps: u32, message: &str) {
+        self.draw_text(12, 12, &format!("FPS {}", fps), 0xffffff, 3);
+        self.draw_text(12, 34, &format!("HP {}", player.lives), 0xfff0a3, 3);
+
+        let key_text = if map.has_key() { "KEY YES" } else { "KEY NO" };
+        let gate_text = if map.gate_open() {
+            "GATE OPEN"
+        } else {
+            "GATE SHUT"
+        };
+
+        self.draw_text(12, 60, key_text, 0xffdd57, 2);
+        self.draw_text(12, 78, gate_text, 0x8ecae6, 2);
+        self.draw_text(12, self.height.saturating_sub(34), message, 0xffffff, 3);
+        self.draw_text(
+            12,
+            self.height.saturating_sub(54),
+            "Q DASH  A D TURN",
+            0xa9b4c4,
+            2,
+        );
     }
 
     fn draw_dash_cooldown_indicator(&mut self, center_x: i32, center_y: i32, ratio: f32) {
@@ -311,9 +399,9 @@ fn cast_ray(map: &Map, pos_x: f32, pos_y: f32, ray_dir_x: f32, ray_dir_y: f32) -
             side = 1;
         }
 
-        wall_id = map.tile_at(map_x, map_y);
+        wall_id = map.displayed_tile_at(map_x, map_y);
 
-        if wall_id != 0 {
+        if map.is_ray_blocking(map_x, map_y) {
             break;
         }
     }
@@ -333,12 +421,69 @@ fn cast_ray(map: &Map, pos_x: f32, pos_y: f32, ray_dir_x: f32, ray_dir_y: f32) -
 
 fn wall_color(wall_id: u8) -> u32 {
     match wall_id {
-        1 => 0x8ecae6,
-        2 => 0xffb703,
-        3 => 0xfb8500,
-        4 => 0x90be6d,
-        5 => 0xc77dff,
+        TILE_WALL => 0x8ecae6,
+        TILE_GATE => 0xffb703,
+        TILE_METAL => 0xfb8500,
+        TILE_RUINS => 0xc77dff,
         _ => 0xe0e0e0,
+    }
+}
+
+fn minimap_color(tile: u8) -> u32 {
+    match tile {
+        TILE_WALL => 0x8ecae6,
+        TILE_GATE => 0xffb703,
+        TILE_METAL => 0xfb8500,
+        TILE_RUINS => 0xc77dff,
+        TILE_HAZARD => 0xe63946,
+        TILE_KEY => 0xffdd57,
+        TILE_SWITCH => 0x4cc9f0,
+        TILE_EXIT => 0xb7efc5,
+        _ => 0xe0e0e0,
+    }
+}
+
+fn sprite_color(tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> {
+    let half = size as f32 / 2.0;
+    let nx = (local_x as f32 - half) / half.max(1.0);
+    let ny = (local_y as f32 - half) / half.max(1.0);
+
+    match tile {
+        TILE_KEY => {
+            if nx.abs() + ny.abs() < 0.74 {
+                Some(0xffdd57)
+            } else if nx > 0.45 && ny.abs() < 0.18 {
+                Some(0xfff3b0)
+            } else {
+                None
+            }
+        }
+        TILE_SWITCH => {
+            if nx.abs() < 0.68 && ny.abs() < 0.68 {
+                Some(if ny < -0.2 { 0x90e0ef } else { 0x0077b6 })
+            } else {
+                None
+            }
+        }
+        TILE_HAZARD => {
+            if ny > -0.65 && ny < 0.72 && nx.abs() < 0.85 - ny.abs() * 0.35 {
+                Some(if ny < -0.18 { 0xffb703 } else { 0xd62828 })
+            } else {
+                None
+            }
+        }
+        TILE_EXIT => {
+            let dist = nx.hypot(ny);
+
+            if dist < 0.72 && dist > 0.48 {
+                Some(0xb7efc5)
+            } else if nx.abs() < 0.14 && ny.abs() < 0.52 {
+                Some(0x52b788)
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
@@ -370,9 +515,32 @@ fn glyph(ch: char) -> Option<[u8; 5]> {
         '7' => Some([0b111, 0b001, 0b010, 0b010, 0b010]),
         '8' => Some([0b111, 0b101, 0b111, 0b101, 0b111]),
         '9' => Some([0b111, 0b101, 0b111, 0b001, 0b111]),
+        'A' => Some([0b010, 0b101, 0b111, 0b101, 0b101]),
+        'B' => Some([0b110, 0b101, 0b110, 0b101, 0b110]),
+        'C' => Some([0b111, 0b100, 0b100, 0b100, 0b111]),
+        'D' => Some([0b110, 0b101, 0b101, 0b101, 0b110]),
+        'E' => Some([0b111, 0b100, 0b110, 0b100, 0b111]),
         'F' => Some([0b111, 0b100, 0b111, 0b100, 0b100]),
+        'G' => Some([0b111, 0b100, 0b101, 0b101, 0b111]),
+        'H' => Some([0b101, 0b101, 0b111, 0b101, 0b101]),
+        'I' => Some([0b111, 0b010, 0b010, 0b010, 0b111]),
+        'J' => Some([0b001, 0b001, 0b001, 0b101, 0b111]),
+        'K' => Some([0b101, 0b101, 0b110, 0b101, 0b101]),
+        'L' => Some([0b100, 0b100, 0b100, 0b100, 0b111]),
+        'M' => Some([0b101, 0b111, 0b111, 0b101, 0b101]),
+        'N' => Some([0b101, 0b111, 0b111, 0b111, 0b101]),
+        'O' => Some([0b111, 0b101, 0b101, 0b101, 0b111]),
         'P' => Some([0b110, 0b101, 0b110, 0b100, 0b100]),
+        'Q' => Some([0b111, 0b101, 0b101, 0b111, 0b001]),
+        'R' => Some([0b110, 0b101, 0b110, 0b101, 0b101]),
         'S' => Some([0b111, 0b100, 0b111, 0b001, 0b111]),
+        'T' => Some([0b111, 0b010, 0b010, 0b010, 0b010]),
+        'U' => Some([0b101, 0b101, 0b101, 0b101, 0b111]),
+        'V' => Some([0b101, 0b101, 0b101, 0b101, 0b010]),
+        'W' => Some([0b101, 0b101, 0b111, 0b111, 0b101]),
+        'X' => Some([0b101, 0b101, 0b010, 0b101, 0b101]),
+        'Y' => Some([0b101, 0b101, 0b010, 0b010, 0b010]),
+        'Z' => Some([0b111, 0b001, 0b010, 0b100, 0b111]),
         _ => None,
     }
 }
