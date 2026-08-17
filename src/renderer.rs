@@ -255,7 +255,7 @@ impl Renderer {
         self.draw_text(
             12,
             self.height.saturating_sub(54),
-            "MOUSE TURN  A D STRAFE  Q DASH",
+            "MOUSE TURN  A D STRAFE  Q DASH  ESC EXIT",
             0xa9b4c4,
             2,
         );

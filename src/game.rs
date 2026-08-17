@@ -5,10 +5,10 @@
 
 use std::time::{Duration, Instant};
 
-use minifb::{Key, MouseMode, Scale, Window, WindowOptions};
+use minifb::{Key, Scale, ScaleMode, Window, WindowOptions};
 
 use crate::{
-    config::{MESSAGE_DURATION, SCREEN_HEIGHT, SCREEN_WIDTH, TARGET_FPS},
+    config::{BORDERLESS_FULLSCREEN, MESSAGE_DURATION, SCREEN_HEIGHT, SCREEN_WIDTH, TARGET_FPS},
     input::InputState,
     map::Map,
     player::Player,
@@ -37,25 +37,36 @@ pub struct Game {
     message: &'static str,
     /// Tiempo restante para mostrar un mensaje temporal.
     message_timer: f32,
-    /// Ultima posicion horizontal conocida del mouse dentro de la ventana.
-    previous_mouse_x: Option<f32>,
+    /// Indica si ya se centro el mouse al menos una vez.
+    mouse_centered: bool,
 }
 
 impl Game {
     /// Crea la ventana, el mapa, el renderer y al jugador en su spawn.
     pub fn new() -> Result<Self, minifb::Error> {
+        let (window_width, window_height) = window_size();
         let mut window = Window::new(
             "Ray Caster - Proyecto 1",
-            SCREEN_WIDTH,
-            SCREEN_HEIGHT,
+            window_width,
+            window_height,
             WindowOptions {
+                borderless: BORDERLESS_FULLSCREEN,
+                title: !BORDERLESS_FULLSCREEN,
                 resize: false,
                 scale: Scale::X1,
+                scale_mode: ScaleMode::Stretch,
+                topmost: BORDERLESS_FULLSCREEN,
                 ..WindowOptions::default()
             },
         )?;
 
         window.set_target_fps(TARGET_FPS);
+        window.set_cursor_visibility(false);
+
+        if BORDERLESS_FULLSCREEN {
+            window.set_position(0, 0);
+            center_mouse(&window);
+        }
 
         let map = Map::level_one();
         let (player_x, player_y, player_angle) = map.player_spawn();
@@ -71,7 +82,7 @@ impl Game {
             displayed_fps: 0,
             message: "FIND KEY",
             message_timer: MESSAGE_DURATION,
-            previous_mouse_x: None,
+            mouse_centered: false,
         })
     }
 
@@ -100,18 +111,21 @@ impl Game {
 
     /// Calcula cuanto se movio el cursor horizontalmente desde el frame anterior.
     fn read_mouse_delta_x(&mut self) -> f32 {
-        let Some((mouse_x, _)) = self.window.get_mouse_pos(MouseMode::Discard) else {
-            self.previous_mouse_x = None;
+        if !self.mouse_centered {
+            center_mouse(&self.window);
+            self.mouse_centered = true;
             return 0.0;
-        };
+        }
 
-        let delta_x = self
-            .previous_mouse_x
-            .map_or(0.0, |previous_x| mouse_x - previous_x);
-        self.previous_mouse_x = Some(mouse_x);
+        let delta_x = mouse_delta_x_from_center(&self.window);
+        center_mouse(&self.window);
 
-        // Evita saltos bruscos cuando el cursor entra de nuevo a la ventana.
-        delta_x.clamp(-80.0, 80.0)
+        if delta_x.abs() < 0.75 {
+            0.0
+        } else {
+            // Evita saltos bruscos si el sistema reporta un movimiento muy grande.
+            delta_x.clamp(-80.0, 80.0)
+        }
     }
 
     /// Actualiza el contador de FPS una vez por segundo.
@@ -158,4 +172,86 @@ impl Game {
             "REACH EXIT"
         }
     }
+}
+
+/// Tamano real de la ventana. En fullscreen se usa la resolucion del monitor.
+fn window_size() -> (usize, usize) {
+    if BORDERLESS_FULLSCREEN {
+        primary_screen_size()
+    } else {
+        (SCREEN_WIDTH, SCREEN_HEIGHT)
+    }
+}
+
+/// Resolucion del monitor principal en Windows.
+#[cfg(target_os = "windows")]
+fn primary_screen_size() -> (usize, usize) {
+    use winapi::um::winuser::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+
+    unsafe {
+        (
+            GetSystemMetrics(SM_CXSCREEN).max(SCREEN_WIDTH as i32) as usize,
+            GetSystemMetrics(SM_CYSCREEN).max(SCREEN_HEIGHT as i32) as usize,
+        )
+    }
+}
+
+/// Fallback para plataformas donde no se consulta el monitor.
+#[cfg(not(target_os = "windows"))]
+fn primary_screen_size() -> (usize, usize) {
+    (SCREEN_WIDTH, SCREEN_HEIGHT)
+}
+
+/// Recentra el cursor en la ventana para obtener movimiento relativo continuo.
+#[cfg(target_os = "windows")]
+fn center_mouse(window: &Window) {
+    use winapi::um::winuser::SetCursorPos;
+
+    let (center_x, center_y) = window_center(window);
+
+    unsafe {
+        SetCursorPos(center_x, center_y);
+    }
+}
+
+/// Diferencia horizontal entre el cursor actual y el centro real de la ventana.
+#[cfg(target_os = "windows")]
+fn mouse_delta_x_from_center(window: &Window) -> f32 {
+    use winapi::{shared::windef::POINT, um::winuser::GetCursorPos};
+
+    let (center_x, _) = window_center(window);
+    let mut cursor = POINT { x: 0, y: 0 };
+
+    unsafe {
+        if GetCursorPos(&mut cursor) == 0 {
+            0.0
+        } else {
+            (cursor.x - center_x) as f32
+        }
+    }
+}
+
+/// Centro de la ventana en coordenadas absolutas de pantalla.
+#[cfg(target_os = "windows")]
+fn window_center(window: &Window) -> (i32, i32) {
+    let (window_x, window_y) = window.get_position();
+    let (width, height) = window.get_size();
+    let center_x = window_x + width as isize / 2;
+    let center_y = window_y + height as isize / 2;
+
+    (center_x as i32, center_y as i32)
+}
+
+/// En otros sistemas el cursor no se recentra automaticamente.
+#[cfg(not(target_os = "windows"))]
+fn center_mouse(_window: &Window) {}
+
+/// Fallback de mouse relativo para plataformas sin recenter automatico.
+#[cfg(not(target_os = "windows"))]
+fn mouse_delta_x_from_center(window: &Window) -> f32 {
+    let center_x = window.get_size().0 as f32 / 2.0;
+
+    window
+        .get_mouse_pos(minifb::MouseMode::Pass)
+        .map_or(0.0, |(mouse_x, _)| mouse_x - center_x)
 }

@@ -3,10 +3,12 @@
 //! Mantener estos valores aqui permite ajustar la ventana, movimiento,
 //! raycasting y HUD sin buscar numeros magicos por todo el codigo.
 
-/// Ancho de la ventana y del buffer de pixeles.
+/// Ancho del buffer interno de render.
 pub const SCREEN_WIDTH: usize = 960;
-/// Alto de la ventana y del buffer de pixeles.
+/// Alto del buffer interno de render.
 pub const SCREEN_HEIGHT: usize = 540;
+/// Si esta activo, la ventana usa modo borderless del tamano de la pantalla.
+pub const BORDERLESS_FULLSCREEN: bool = true;
 /// FPS objetivo que `minifb` intenta respetar.
 pub const TARGET_FPS: usize = 60;
 
