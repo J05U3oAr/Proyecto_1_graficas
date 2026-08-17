@@ -5,7 +5,7 @@
 
 use crate::{
     config::{
-        COLLISION_STEP, DASH_COOLDOWN, DASH_DISTANCE, MOVE_SPEED, PLAYER_RADIUS, ROTATION_SPEED,
+        COLLISION_STEP, DASH_COOLDOWN, DASH_DISTANCE, MOUSE_SENSITIVITY, MOVE_SPEED, PLAYER_RADIUS,
     },
     input::InputState,
     map::Map,
@@ -59,19 +59,11 @@ impl Player {
         self.touched_hazard
     }
 
-    /// Actualiza rotacion, movimiento, colisiones y dash.
+    /// Actualiza mirada con mouse, movimiento, colisiones y dash.
     pub fn update(&mut self, input: &InputState, map: &Map, dt: f32) {
         self.touched_hazard = false;
         self.dash_cooldown = (self.dash_cooldown - dt).max(0.0);
-        let rotation_step = ROTATION_SPEED * dt;
-
-        if input.rotate_left {
-            self.angle -= rotation_step;
-        }
-
-        if input.rotate_right {
-            self.angle += rotation_step;
-        }
+        self.angle += input.mouse_delta_x * MOUSE_SENSITIVITY;
 
         let dir_x = self.angle.cos();
         let dir_y = self.angle.sin();

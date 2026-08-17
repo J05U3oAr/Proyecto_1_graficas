@@ -12,8 +12,8 @@ pub const TARGET_FPS: usize = 60;
 
 /// Velocidad base de movimiento del jugador en celdas por segundo.
 pub const MOVE_SPEED: f32 = 3.15;
-/// Velocidad de giro del jugador en radianes por segundo.
-pub const ROTATION_SPEED: f32 = 2.4;
+/// Sensibilidad del mouse en radianes por pixel horizontal.
+pub const MOUSE_SENSITIVITY: f32 = 0.0032;
 /// Radio usado para calcular colisiones alrededor del jugador.
 pub const PLAYER_RADIUS: f32 = 0.22;
 /// Tamano del plano de camara; controla el campo de vision.

@@ -5,7 +5,7 @@
 
 use std::time::{Duration, Instant};
 
-use minifb::{Key, Scale, Window, WindowOptions};
+use minifb::{Key, MouseMode, Scale, Window, WindowOptions};
 
 use crate::{
     config::{MESSAGE_DURATION, SCREEN_HEIGHT, SCREEN_WIDTH, TARGET_FPS},
@@ -37,6 +37,8 @@ pub struct Game {
     message: &'static str,
     /// Tiempo restante para mostrar un mensaje temporal.
     message_timer: f32,
+    /// Ultima posicion horizontal conocida del mouse dentro de la ventana.
+    previous_mouse_x: Option<f32>,
 }
 
 impl Game {
@@ -69,6 +71,7 @@ impl Game {
             displayed_fps: 0,
             message: "FIND KEY",
             message_timer: MESSAGE_DURATION,
+            previous_mouse_x: None,
         })
     }
 
@@ -79,7 +82,8 @@ impl Game {
             let dt = (now - self.previous_frame).as_secs_f32();
             self.previous_frame = now;
 
-            let input = InputState::from_window(&self.window);
+            let mouse_delta_x = self.read_mouse_delta_x();
+            let input = InputState::from_window(&self.window, mouse_delta_x);
             self.player.update(&input, &self.map, dt);
             self.update_interactions(dt);
             self.update_fps(now);
@@ -92,6 +96,22 @@ impl Game {
         }
 
         Ok(())
+    }
+
+    /// Calcula cuanto se movio el cursor horizontalmente desde el frame anterior.
+    fn read_mouse_delta_x(&mut self) -> f32 {
+        let Some((mouse_x, _)) = self.window.get_mouse_pos(MouseMode::Discard) else {
+            self.previous_mouse_x = None;
+            return 0.0;
+        };
+
+        let delta_x = self
+            .previous_mouse_x
+            .map_or(0.0, |previous_x| mouse_x - previous_x);
+        self.previous_mouse_x = Some(mouse_x);
+
+        // Evita saltos bruscos cuando el cursor entra de nuevo a la ventana.
+        delta_x.clamp(-80.0, 80.0)
     }
 
     /// Actualiza el contador de FPS una vez por segundo.
