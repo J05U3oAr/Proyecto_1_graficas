@@ -1,8 +1,17 @@
+//! Texturas procedural para paredes y obstaculos.
+//!
+//! Cada funcion recibe coordenadas dentro de una textura virtual de 64x64
+//! y devuelve un color RGB. Mas adelante este modulo puede cambiarse para
+//! leer pixeles desde imagenes PNG sin alterar el raycaster.
+
 use crate::map::{TILE_GATE, TILE_METAL, TILE_RUINS, TILE_WALL};
 
+/// Tamano fijo de cada textura cuadrada.
 pub const TEXTURE_SIZE: usize = 64;
 
+/// Devuelve el color de textura para un tile bloqueante.
 pub fn wall_texel(tile: u8, x: usize, y: usize) -> u32 {
+    // El modulo permite repetir la textura si una coordenada se sale del rango.
     let x = x % TEXTURE_SIZE;
     let y = y % TEXTURE_SIZE;
 
@@ -15,8 +24,10 @@ pub fn wall_texel(tile: u8, x: usize, y: usize) -> u32 {
     }
 }
 
+/// Textura de ladrillo/piedra para paredes normales.
 fn stone_brick(x: usize, y: usize) -> u32 {
     let row = y / 16;
+    // Desfase por fila para que los ladrillos no queden alineados verticalmente.
     let shifted_x = (x + (row % 2) * 16) % TEXTURE_SIZE;
     let mortar = y % 16 == 0 || y % 16 == 15 || shifted_x % 32 == 0 || shifted_x % 32 == 31;
     let grain = noise(x, y, 11) as i32 - 4;
@@ -28,6 +39,7 @@ fn stone_brick(x: usize, y: usize) -> u32 {
     }
 }
 
+/// Textura de puerta con barras, marco, refuerzos y remaches.
 fn gate(x: usize, y: usize) -> u32 {
     let border = x < 4 || x > 59 || y < 4 || y > 59;
     let bar = x % 16 < 5;
@@ -48,6 +60,7 @@ fn gate(x: usize, y: usize) -> u32 {
     }
 }
 
+/// Textura de panel metalico con uniones, remaches y rayones.
 fn metal_panel(x: usize, y: usize) -> u32 {
     let seam = x % 32 == 0 || y % 32 == 0;
     let rivet_centered = (x % 32).abs_diff(16) <= 3 && (y % 32).abs_diff(16) <= 3;
@@ -65,6 +78,7 @@ fn metal_panel(x: usize, y: usize) -> u32 {
     }
 }
 
+/// Textura de ruinas con bloques, grietas y musgo.
 fn cracked_ruins(x: usize, y: usize) -> u32 {
     let block_line = x % 21 == 0 || y % 18 == 0;
     let crack = (x * 5 + y * 9) % 41 < 2 || (x * 11).abs_diff(y * 7) % 53 < 2;
@@ -82,6 +96,7 @@ fn cracked_ruins(x: usize, y: usize) -> u32 {
     }
 }
 
+/// Textura de respaldo para tiles no reconocidos.
 fn fallback(x: usize, y: usize) -> u32 {
     if (x / 8 + y / 8) % 2 == 0 {
         rgb(210, 210, 210)
@@ -90,6 +105,7 @@ fn fallback(x: usize, y: usize) -> u32 {
     }
 }
 
+/// Ruido determinista pequeno para variaciones de color.
 fn noise(x: usize, y: usize, seed: usize) -> u8 {
     let mut value = x
         .wrapping_mul(73_856_093)
@@ -100,6 +116,7 @@ fn noise(x: usize, y: usize, seed: usize) -> u8 {
     ((value >> 24) & 0x0f) as u8
 }
 
+/// Variante de `rgb` que acepta enteros con signo y recorta a 0..255.
 fn rgb_i(r: i32, g: i32, b: i32) -> u32 {
     rgb(
         r.clamp(0, 255) as u32,
@@ -108,6 +125,7 @@ fn rgb_i(r: i32, g: i32, b: i32) -> u32 {
     )
 }
 
+/// Empaca componentes RGB en el formato `0xRRGGBB`.
 fn rgb(r: u32, g: u32, b: u32) -> u32 {
     (r.min(255) << 16) | (g.min(255) << 8) | b.min(255)
 }

@@ -1,3 +1,8 @@
+//! Orquestador principal del juego.
+//!
+//! Aqui vive el loop: leer input, actualizar mundo, renderizar y enviar
+//! el buffer a la ventana.
+
 use std::time::{Duration, Instant};
 
 use minifb::{Key, Scale, Window, WindowOptions};
@@ -10,20 +15,32 @@ use crate::{
     renderer::Renderer,
 };
 
+/// Estado global de una partida.
 pub struct Game {
+    /// Ventana creada con `minifb`.
     window: Window,
+    /// Renderer que dibuja todos los pixeles del frame.
     renderer: Renderer,
+    /// Mapa actual y estado de sus interacciones.
     map: Map,
+    /// Jugador, incluyendo posicion, angulo, vida y dash.
     player: Player,
+    /// Tiempo del frame anterior para calcular delta time.
     previous_frame: Instant,
+    /// Reloj usado para refrescar el contador visible de FPS.
     fps_timer: Instant,
+    /// Frames acumulados durante el segundo actual.
     frame_counter: u32,
+    /// Ultimo valor de FPS mostrado.
     displayed_fps: u32,
+    /// Mensaje actual del HUD.
     message: &'static str,
+    /// Tiempo restante para mostrar un mensaje temporal.
     message_timer: f32,
 }
 
 impl Game {
+    /// Crea la ventana, el mapa, el renderer y al jugador en su spawn.
     pub fn new() -> Result<Self, minifb::Error> {
         let mut window = Window::new(
             "Ray Caster - Proyecto 1",
@@ -55,6 +72,7 @@ impl Game {
         })
     }
 
+    /// Ejecuta el loop principal hasta cerrar la ventana o presionar Escape.
     pub fn run(&mut self) -> Result<(), minifb::Error> {
         while self.window.is_open() && !self.window.is_key_down(Key::Escape) {
             let now = Instant::now();
@@ -76,6 +94,7 @@ impl Game {
         Ok(())
     }
 
+    /// Actualiza el contador de FPS una vez por segundo.
     fn update_fps(&mut self, now: Instant) {
         self.frame_counter += 1;
 
@@ -91,6 +110,7 @@ impl Game {
         }
     }
 
+    /// Procesa pickups, hazards, switch, gate y mensajes de objetivo.
     fn update_interactions(&mut self, dt: f32) {
         self.message_timer = (self.message_timer - dt).max(0.0);
 
@@ -106,6 +126,7 @@ impl Game {
         }
     }
 
+    /// Mensaje persistente que guia al jugador cuando no hay evento reciente.
     fn current_goal_message(&self) -> &'static str {
         if self.map.completed() {
             "LEVEL COMPLETE"

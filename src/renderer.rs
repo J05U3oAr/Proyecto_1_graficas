@@ -1,3 +1,9 @@
+//! Renderizado del juego.
+//!
+//! Este modulo dibuja directamente sobre un buffer de pixeles. Incluye el
+//! raycaster de paredes, sprites billboard, minimapa, HUD y utilidades basicas
+//! para pintar formas/texto.
+
 use crate::{
     config::{FOV_FACTOR, MINIMAP_CELL_SIZE, MINIMAP_PADDING},
     map::{
@@ -8,21 +14,32 @@ use crate::{
     texture::{TEXTURE_SIZE, wall_texel},
 };
 
+/// Renderer basado en un buffer de pixeles RGB.
 pub struct Renderer {
+    /// Ancho del buffer.
     width: usize,
+    /// Alto del buffer.
     height: usize,
+    /// Pixeles RGB que se envian a `minifb`.
     buffer: Vec<u32>,
+    /// Distancia de pared por columna, usada para ocultar sprites detras.
     depth_buffer: Vec<f32>,
 }
 
+/// Resultado de lanzar un rayo contra el mapa.
 struct RayHit {
+    /// Distancia perpendicular hasta la pared.
     distance: f32,
+    /// Tile golpeado por el rayo.
     wall_id: u8,
+    /// Lado golpeado: 0 para eje X, 1 para eje Y.
     side: i32,
+    /// Coordenada horizontal dentro de la textura.
     texture_x: usize,
 }
 
 impl Renderer {
+    /// Crea un renderer con buffer de color y buffer de profundidad.
     pub fn new(width: usize, height: usize) -> Self {
         Self {
             width,
@@ -32,10 +49,12 @@ impl Renderer {
         }
     }
 
+    /// Expone el buffer para que la ventana pueda mostrarlo.
     pub fn buffer(&self) -> &[u32] {
         &self.buffer
     }
 
+    /// Dibuja un frame completo en el orden correcto de capas.
     pub fn render(&mut self, map: &Map, player: &Player, fps: u32, message: &str) {
         self.draw_background();
         self.draw_walls(map, player);
@@ -44,6 +63,7 @@ impl Renderer {
         self.draw_hud(map, player, fps, message);
     }
 
+    /// Pinta cielo y piso con gradientes simples.
     fn draw_background(&mut self) {
         let horizon = self.height / 2;
 
@@ -59,13 +79,16 @@ impl Renderer {
         }
     }
 
+    /// Dibuja las paredes visibles usando raycasting columna por columna.
     fn draw_walls(&mut self, map: &Map, player: &Player) {
         let dir_x = player.angle.cos();
         let dir_y = player.angle.sin();
+        // Plano de camara perpendicular a la direccion del jugador.
         let plane_x = -dir_y * FOV_FACTOR;
         let plane_y = dir_x * FOV_FACTOR;
 
         for screen_x in 0..self.width {
+            // `camera_x` va de -1 a 1 y representa la columna dentro del FOV.
             let camera_x = 2.0 * screen_x as f32 / self.width as f32 - 1.0;
             let ray_dir_x = dir_x + plane_x * camera_x;
             let ray_dir_y = dir_y + plane_y * camera_x;
@@ -76,11 +99,13 @@ impl Renderer {
             let center_y = self.height as i32 / 2;
             let draw_start = (-line_height / 2 + center_y).max(0) as usize;
             let draw_end = (line_height / 2 + center_y).min(self.height as i32 - 1) as usize;
+            // Avance vertical en la textura por cada pixel de pantalla.
             let texture_step = TEXTURE_SIZE as f32 / line_height.max(1) as f32;
             let mut texture_y =
                 (draw_start as i32 - center_y + line_height / 2) as f32 * texture_step;
 
             for y in draw_start..=draw_end {
+                // Se muestrea la textura y luego se oscurece por distancia/lado.
                 let color = shade_wall(
                     wall_texel(hit.wall_id, hit.texture_x, texture_y as usize),
                     hit.side,
@@ -92,9 +117,11 @@ impl Renderer {
         }
     }
 
+    /// Dibuja objetos 2D dentro del mundo 3D.
     fn draw_sprites(&mut self, map: &Map, player: &Player) {
         let mut sprites = Vec::new();
 
+        // Recolecta tiles especiales que se representan como sprites.
         for y in 0..map.height() {
             for x in 0..map.width() {
                 let tile = map.tile_at(x as i32, y as i32);
@@ -108,6 +135,7 @@ impl Renderer {
             }
         }
 
+        // Se dibuja de lejos a cerca para que los sprites se tapen bien entre si.
         sprites.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
         let dir_x = player.angle.cos();
@@ -117,6 +145,7 @@ impl Renderer {
         let inv_det = 1.0 / (plane_x * dir_y - dir_x * plane_y);
 
         for (_, sprite_x, sprite_y, tile) in sprites {
+            // Transforma la posicion del sprite desde mundo a espacio de camara.
             let rel_x = sprite_x - player.x;
             let rel_y = sprite_y - player.y;
             let transform_x = inv_det * (dir_y * rel_x - dir_x * rel_y);
@@ -138,6 +167,7 @@ impl Renderer {
             for stripe in start_x..=end_x {
                 let stripe_index = stripe as usize;
 
+                // Si una pared esta mas cerca en esta columna, el sprite queda oculto.
                 if transform_y >= self.depth_buffer[stripe_index] {
                     continue;
                 }
@@ -153,6 +183,7 @@ impl Renderer {
         }
     }
 
+    /// Dibuja una vista superior compacta del mapa.
     fn draw_minimap(&mut self, map: &Map, player: &Player) {
         let scale = MINIMAP_CELL_SIZE;
         let map_width = map.width() * scale;
@@ -206,6 +237,7 @@ impl Renderer {
         }
     }
 
+    /// Dibuja textos de estado: FPS, vida, llave, puerta y objetivo.
     fn draw_hud(&mut self, map: &Map, player: &Player, fps: u32, message: &str) {
         self.draw_text(12, 12, &format!("FPS {}", fps), 0xffffff, 3);
         self.draw_text(12, 34, &format!("HP {}", player.lives), 0xfff0a3, 3);
@@ -229,6 +261,7 @@ impl Renderer {
         );
     }
 
+    /// Indicador circular del cooldown del dash.
     fn draw_dash_cooldown_indicator(&mut self, center_x: i32, center_y: i32, ratio: f32) {
         self.fill_circle(center_x, center_y, 15, 0x101319);
         self.fill_clockwise_circle_slice(center_x, center_y, 12, ratio, 0xffc857);
@@ -236,6 +269,7 @@ impl Renderer {
         self.fill_circle(center_x, center_y, 3, 0xffffff);
     }
 
+    /// Rellena una porcion circular en sentido horario.
     fn fill_clockwise_circle_slice(
         &mut self,
         center_x: i32,
@@ -271,18 +305,21 @@ impl Renderer {
         }
     }
 
+    /// Pinta una fila completa del buffer.
     fn draw_horizontal_line(&mut self, y: usize, color: u32) {
         let row_start = y * self.width;
         let row_end = row_start + self.width;
         self.buffer[row_start..row_end].fill(color);
     }
 
+    /// Pinta un pixel si esta dentro del buffer.
     fn put_pixel(&mut self, x: usize, y: usize, color: u32) {
         if x < self.width && y < self.height {
             self.buffer[y * self.width + x] = color;
         }
     }
 
+    /// Rellena un rectangulo recortandolo contra los bordes de pantalla.
     fn fill_rect(&mut self, x: usize, y: usize, rect_width: usize, rect_height: usize, color: u32) {
         for draw_y in y..(y + rect_height).min(self.height) {
             for draw_x in x..(x + rect_width).min(self.width) {
@@ -291,6 +328,7 @@ impl Renderer {
         }
     }
 
+    /// Rellena un circulo mediante prueba de distancia al centro.
     fn fill_circle(&mut self, center_x: i32, center_y: i32, radius: i32, color: u32) {
         let radius_sq = radius * radius;
 
@@ -308,6 +346,7 @@ impl Renderer {
         }
     }
 
+    /// Dibuja una linea usando el algoritmo incremental de Bresenham.
     fn draw_line(&mut self, start_x: i32, start_y: i32, end_x: i32, end_y: i32, color: u32) {
         let mut x = start_x;
         let mut y = start_y;
@@ -340,6 +379,7 @@ impl Renderer {
         }
     }
 
+    /// Dibuja texto usando glifos bitmap de 3x5 pixeles.
     fn draw_text(&mut self, x: usize, y: usize, text: &str, color: u32, scale: usize) {
         let mut cursor_x = x;
 
@@ -354,6 +394,7 @@ impl Renderer {
         }
     }
 
+    /// Dibuja un caracter individual de la fuente bitmap.
     fn draw_char(&mut self, x: usize, y: usize, ch: char, color: u32, scale: usize) {
         let Some(pattern) = glyph(ch) else {
             return;
@@ -369,9 +410,11 @@ impl Renderer {
     }
 }
 
+/// Lanza un rayo desde el jugador y devuelve el primer tile bloqueante.
 fn cast_ray(map: &Map, pos_x: f32, pos_y: f32, ray_dir_x: f32, ray_dir_y: f32) -> RayHit {
     let mut map_x = pos_x.floor() as i32;
     let mut map_y = pos_y.floor() as i32;
+    // Distancia que el rayo avanza para cruzar una celda en X o en Y.
     let delta_dist_x = if ray_dir_x == 0.0 {
         f32::INFINITY
     } else {
@@ -383,6 +426,7 @@ fn cast_ray(map: &Map, pos_x: f32, pos_y: f32, ray_dir_x: f32, ray_dir_y: f32) -
         (1.0 / ray_dir_y).abs()
     };
 
+    // Direccion de avance en la grilla y distancia inicial al primer borde.
     let (step_x, mut side_dist_x) = if ray_dir_x < 0.0 {
         (-1, (pos_x - map_x as f32) * delta_dist_x)
     } else {
@@ -398,6 +442,7 @@ fn cast_ray(map: &Map, pos_x: f32, pos_y: f32, ray_dir_x: f32, ray_dir_y: f32) -
     let mut side = 0;
     let mut wall_id = 1;
 
+    // DDA: avanza de celda en celda hasta encontrar algo que bloquee vision.
     for _ in 0..128 {
         if side_dist_x < side_dist_y {
             side_dist_x += delta_dist_x;
@@ -416,6 +461,7 @@ fn cast_ray(map: &Map, pos_x: f32, pos_y: f32, ray_dir_x: f32, ray_dir_y: f32) -
         }
     }
 
+    // Distancia perpendicular para evitar efecto ojo de pez.
     let distance = if side == 0 {
         (map_x as f32 - pos_x + (1 - step_x) as f32 / 2.0) / ray_dir_x
     } else {
@@ -423,6 +469,7 @@ fn cast_ray(map: &Map, pos_x: f32, pos_y: f32, ray_dir_x: f32, ray_dir_y: f32) -
     }
     .abs();
 
+    // Coordenada exacta del impacto dentro de la pared, usada para tex_x.
     let wall_x = if side == 0 {
         pos_y + distance * ray_dir_y
     } else {
@@ -431,6 +478,7 @@ fn cast_ray(map: &Map, pos_x: f32, pos_y: f32, ray_dir_x: f32, ray_dir_y: f32) -
     let wall_x = wall_x - wall_x.floor();
     let mut texture_x = ((wall_x * TEXTURE_SIZE as f32) as usize).min(TEXTURE_SIZE - 1);
 
+    // Invierte la textura segun la cara golpeada para mantener orientacion coherente.
     if (side == 0 && ray_dir_x > 0.0) || (side == 1 && ray_dir_y < 0.0) {
         texture_x = TEXTURE_SIZE.saturating_sub(texture_x + 1);
     }
@@ -443,6 +491,7 @@ fn cast_ray(map: &Map, pos_x: f32, pos_y: f32, ray_dir_x: f32, ray_dir_y: f32) -
     }
 }
 
+/// Color usado por cada tile en el minimapa.
 fn minimap_color(tile: u8) -> u32 {
     match tile {
         TILE_WALL => 0x8ecae6,
@@ -457,6 +506,7 @@ fn minimap_color(tile: u8) -> u32 {
     }
 }
 
+/// Devuelve el color de un sprite procedural o `None` para pixeles transparentes.
 fn sprite_color(tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> {
     let half = size as f32 / 2.0;
     let nx = (local_x as f32 - half) / half.max(1.0);
@@ -501,6 +551,7 @@ fn sprite_color(tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> 
     }
 }
 
+/// Aplica sombreado por lado y distancia para dar profundidad.
 fn shade_wall(color: u32, side: i32, distance: f32) -> u32 {
     let side_factor = if side == 1 { 0.72 } else { 1.0 };
     let distance_factor = (1.0 / (1.0 + distance * 0.08)).clamp(0.35, 1.0);
@@ -513,10 +564,12 @@ fn shade_wall(color: u32, side: i32, distance: f32) -> u32 {
     rgb(r, g, b)
 }
 
+/// Empaca componentes RGB en el formato `0xRRGGBB`.
 fn rgb(r: u32, g: u32, b: u32) -> u32 {
     (r.min(255) << 16) | (g.min(255) << 8) | b.min(255)
 }
 
+/// Patron bitmap de una letra o numero para el HUD.
 fn glyph(ch: char) -> Option<[u8; 5]> {
     match ch {
         '0' => Some([0b111, 0b101, 0b101, 0b101, 0b111]),

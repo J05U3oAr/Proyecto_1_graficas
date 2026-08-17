@@ -1,25 +1,47 @@
+//! Definicion del mapa y reglas de tiles.
+//!
+//! El mapa se guarda como una grilla 2D compacta. Cada celda contiene un
+//! numero que representa piso, pared, obstaculo, llave, switch o salida.
+
 use crate::{config::PLAYER_RADIUS, player::Player};
 
+/// Celda vacia por la que el jugador puede caminar.
 pub const TILE_FLOOR: u8 = 0;
+/// Pared solida normal.
 pub const TILE_WALL: u8 = 1;
+/// Puerta que se abre cuando el jugador tiene llave y presiona el switch.
 pub const TILE_GATE: u8 = 2;
+/// Obstaculo/pared con material metalico.
 pub const TILE_METAL: u8 = 3;
+/// Obstaculo/pared con material de ruinas.
 pub const TILE_RUINS: u8 = 5;
+/// Peligro que hace respawn al jugador.
 pub const TILE_HAZARD: u8 = 6;
+/// Llave que desbloquea la posibilidad de abrir la puerta.
 pub const TILE_KEY: u8 = 7;
+/// Interruptor que abre la puerta si ya se obtuvo la llave.
 pub const TILE_SWITCH: u8 = 8;
+/// Meta del nivel.
 pub const TILE_EXIT: u8 = 9;
 
+/// Estado del mapa y de los objetivos del nivel.
 pub struct Map {
+    /// Ancho de la grilla en celdas.
     width: usize,
+    /// Alto de la grilla en celdas.
     height: usize,
+    /// Tiles guardados en orden fila por fila.
     tiles: Vec<u8>,
+    /// Indica si la llave ya fue recogida.
     has_key: bool,
+    /// Indica si el switch ya fue activado.
     switch_pressed: bool,
+    /// Indica si el jugador completo el nivel.
     completed: bool,
 }
 
 impl Map {
+    /// Construye el primer nivel desde texto ASCII.
     pub fn level_one() -> Self {
         let rows = [
             "1111111111111111",
@@ -42,6 +64,7 @@ impl Map {
 
         let width = rows[0].len();
         let height = rows.len();
+        // Convierte cada caracter numerico del mapa en su valor `u8`.
         let tiles = rows
             .iter()
             .flat_map(|row| row.bytes().map(|value| value - b'0'))
@@ -57,34 +80,42 @@ impl Map {
         }
     }
 
+    /// Ancho del mapa en celdas.
     pub fn width(&self) -> usize {
         self.width
     }
 
+    /// Alto del mapa en celdas.
     pub fn height(&self) -> usize {
         self.height
     }
 
+    /// Posicion y angulo inicial del jugador.
     pub fn player_spawn(&self) -> (f32, f32, f32) {
         (2.5, 1.5, 0.15)
     }
 
+    /// Devuelve si el jugador ya recogio la llave.
     pub fn has_key(&self) -> bool {
         self.has_key
     }
 
+    /// Devuelve si el switch ya fue presionado correctamente.
     pub fn switch_pressed(&self) -> bool {
         self.switch_pressed
     }
 
+    /// La puerta queda abierta solo si se tiene llave y switch activado.
     pub fn gate_open(&self) -> bool {
         self.has_key && self.switch_pressed
     }
 
+    /// Devuelve si el nivel ya fue completado.
     pub fn completed(&self) -> bool {
         self.completed
     }
 
+    /// Lee el tile en una celda. Fuera del mapa cuenta como pared.
     pub fn tile_at(&self, x: i32, y: i32) -> u8 {
         if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
             return TILE_WALL;
@@ -93,6 +124,7 @@ impl Map {
         self.tiles[y as usize * self.width + x as usize]
     }
 
+    /// Tile que debe usarse para dibujar y bloquear segun el estado actual.
     pub fn displayed_tile_at(&self, x: i32, y: i32) -> u8 {
         let tile = self.tile_at(x, y);
 
@@ -103,6 +135,7 @@ impl Map {
         }
     }
 
+    /// Indica si un rayo de vision debe detenerse en esta celda.
     pub fn is_ray_blocking(&self, x: i32, y: i32) -> bool {
         matches!(
             self.displayed_tile_at(x, y),
@@ -110,7 +143,9 @@ impl Map {
         )
     }
 
+    /// Revisa si el jugador puede ocupar una posicion circular.
     pub fn can_stand_at(&self, x: f32, y: f32, radius: f32) -> bool {
+        // Se prueban las esquinas del radio para evitar cruzar paredes en diagonal.
         let checks = [
             (x - radius, y - radius),
             (x + radius, y - radius),
@@ -124,10 +159,12 @@ impl Map {
         })
     }
 
+    /// Devuelve si el radio del jugador toca algun hazard.
     pub fn player_touches_hazard(&self, x: f32, y: f32, radius: f32) -> bool {
         self.player_touches_tile(x, y, radius, TILE_HAZARD)
     }
 
+    /// Aplica interacciones del jugador con tiles especiales del mapa.
     pub fn update_player_interactions(&mut self, player: &mut Player) -> Option<&'static str> {
         if self.completed {
             return None;
@@ -169,6 +206,7 @@ impl Map {
         None
     }
 
+    /// Regla de colision fisica para cada tipo de tile.
     fn blocks_player(&self, tile: u8) -> bool {
         match tile {
             TILE_FLOOR | TILE_HAZARD | TILE_KEY | TILE_SWITCH | TILE_EXIT => false,
@@ -178,6 +216,7 @@ impl Map {
         }
     }
 
+    /// Revisa varios puntos alrededor del jugador contra un tile objetivo.
     fn player_touches_tile(&self, x: f32, y: f32, radius: f32, target_tile: u8) -> bool {
         let checks = [
             (x, y),
@@ -192,6 +231,7 @@ impl Map {
         })
     }
 
+    /// Cambia una celda del mapa si esta dentro de limites.
     fn set_tile(&mut self, x: i32, y: i32, tile: u8) {
         if x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
             return;

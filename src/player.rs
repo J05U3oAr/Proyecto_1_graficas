@@ -1,3 +1,8 @@
+//! Movimiento y estado del jugador.
+//!
+//! Este modulo convierte acciones de input en desplazamiento dentro del mapa,
+//! aplicando colisiones, dash, vida y respawn.
+
 use crate::{
     config::{
         COLLISION_STEP, DASH_COOLDOWN, DASH_DISTANCE, MOVE_SPEED, PLAYER_RADIUS, ROTATION_SPEED,
@@ -6,19 +11,30 @@ use crate::{
     map::Map,
 };
 
+/// Jugador dentro del mundo 2D del raycaster.
 pub struct Player {
+    /// Posicion X en coordenadas de mapa.
     pub x: f32,
+    /// Posicion Y en coordenadas de mapa.
     pub y: f32,
+    /// Angulo de mirada en radianes.
     pub angle: f32,
+    /// Vidas actuales.
     pub lives: u8,
+    /// Tiempo restante antes de poder usar dash otra vez.
     dash_cooldown: f32,
+    /// Bandera temporal que se activa al tocar un hazard.
     touched_hazard: bool,
+    /// Posicion X de respawn.
     spawn_x: f32,
+    /// Posicion Y de respawn.
     spawn_y: f32,
+    /// Angulo de respawn.
     spawn_angle: f32,
 }
 
 impl Player {
+    /// Crea un jugador en la posicion y angulo indicados.
     pub fn new(x: f32, y: f32, angle: f32) -> Self {
         Self {
             x,
@@ -33,14 +49,17 @@ impl Player {
         }
     }
 
+    /// Progreso normalizado del cooldown del dash, util para dibujarlo en HUD.
     pub fn dash_cooldown_ratio(&self) -> f32 {
         (self.dash_cooldown / DASH_COOLDOWN).clamp(0.0, 1.0)
     }
 
+    /// Indica si durante este frame el jugador piso un hazard.
     pub fn touched_hazard(&self) -> bool {
         self.touched_hazard
     }
 
+    /// Actualiza rotacion, movimiento, colisiones y dash.
     pub fn update(&mut self, input: &InputState, map: &Map, dt: f32) {
         self.touched_hazard = false;
         self.dash_cooldown = (self.dash_cooldown - dt).max(0.0);
@@ -56,6 +75,7 @@ impl Player {
 
         let dir_x = self.angle.cos();
         let dir_y = self.angle.sin();
+        // Vector perpendicular a la mirada, usado para strafe lateral.
         let side_x = -dir_y;
         let side_y = dir_x;
         let mut delta_x = 0.0;
@@ -82,6 +102,7 @@ impl Player {
             delta_y -= side_y * movement_step;
         }
 
+        // Primero se aplica el movimiento normal; luego el dash si fue presionado.
         self.move_with_collision(delta_x, delta_y, map);
 
         if input.dash && self.dash_cooldown <= 0.0 {
@@ -90,11 +111,13 @@ impl Player {
         }
     }
 
+    /// Aplica dano y devuelve al jugador al punto inicial.
     pub fn take_hit_and_respawn(&mut self) {
         self.lives = self.lives.saturating_sub(1).max(1);
         self.respawn();
     }
 
+    /// Restaura posicion, angulo y estado temporal de hazard.
     pub fn respawn(&mut self) {
         self.x = self.spawn_x;
         self.y = self.spawn_y;
@@ -102,6 +125,7 @@ impl Player {
         self.touched_hazard = false;
     }
 
+    /// Divide un movimiento grande en pasos pequenos para mejorar colisiones.
     fn move_with_collision(&mut self, delta_x: f32, delta_y: f32, map: &Map) {
         let distance = delta_x.hypot(delta_y);
         let steps = (distance / COLLISION_STEP).ceil().max(1.0) as usize;
@@ -113,6 +137,7 @@ impl Player {
         }
     }
 
+    /// Intenta mover en X y Y por separado para permitir deslizamiento en paredes.
     fn try_move(&mut self, delta_x: f32, delta_y: f32, map: &Map) {
         let next_x = self.x + delta_x;
 
