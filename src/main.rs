@@ -4,6 +4,7 @@ mod input;
 mod map;
 mod player;
 mod renderer;
+mod texture;
 
 use game::Game;
 

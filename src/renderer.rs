@@ -5,6 +5,7 @@ use crate::{
         TILE_SWITCH, TILE_WALL,
     },
     player::Player,
+    texture::{TEXTURE_SIZE, wall_texel},
 };
 
 pub struct Renderer {
@@ -18,6 +19,7 @@ struct RayHit {
     distance: f32,
     wall_id: u8,
     side: i32,
+    texture_x: usize,
 }
 
 impl Renderer {
@@ -74,10 +76,18 @@ impl Renderer {
             let center_y = self.height as i32 / 2;
             let draw_start = (-line_height / 2 + center_y).max(0) as usize;
             let draw_end = (line_height / 2 + center_y).min(self.height as i32 - 1) as usize;
-            let color = shade_wall(wall_color(hit.wall_id), hit.side, hit.distance);
+            let texture_step = TEXTURE_SIZE as f32 / line_height.max(1) as f32;
+            let mut texture_y =
+                (draw_start as i32 - center_y + line_height / 2) as f32 * texture_step;
 
             for y in draw_start..=draw_end {
+                let color = shade_wall(
+                    wall_texel(hit.wall_id, hit.texture_x, texture_y as usize),
+                    hit.side,
+                    hit.distance,
+                );
                 self.put_pixel(screen_x, y, color);
+                texture_y += texture_step;
             }
         }
     }
@@ -410,22 +420,26 @@ fn cast_ray(map: &Map, pos_x: f32, pos_y: f32, ray_dir_x: f32, ray_dir_y: f32) -
         (map_x as f32 - pos_x + (1 - step_x) as f32 / 2.0) / ray_dir_x
     } else {
         (map_y as f32 - pos_y + (1 - step_y) as f32 / 2.0) / ray_dir_y
+    }
+    .abs();
+
+    let wall_x = if side == 0 {
+        pos_y + distance * ray_dir_y
+    } else {
+        pos_x + distance * ray_dir_x
     };
+    let wall_x = wall_x - wall_x.floor();
+    let mut texture_x = ((wall_x * TEXTURE_SIZE as f32) as usize).min(TEXTURE_SIZE - 1);
+
+    if (side == 0 && ray_dir_x > 0.0) || (side == 1 && ray_dir_y < 0.0) {
+        texture_x = TEXTURE_SIZE.saturating_sub(texture_x + 1);
+    }
 
     RayHit {
-        distance: distance.abs(),
+        distance,
         wall_id,
         side,
-    }
-}
-
-fn wall_color(wall_id: u8) -> u32 {
-    match wall_id {
-        TILE_WALL => 0x8ecae6,
-        TILE_GATE => 0xffb703,
-        TILE_METAL => 0xfb8500,
-        TILE_RUINS => 0xc77dff,
-        _ => 0xe0e0e0,
+        texture_x,
     }
 }
 
