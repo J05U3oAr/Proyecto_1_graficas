@@ -85,13 +85,13 @@ impl Player {
         }
 
         if input.strafe_left {
-            delta_x += side_x * movement_step;
-            delta_y += side_y * movement_step;
+            delta_x -= side_x * movement_step;
+            delta_y -= side_y * movement_step;
         }
 
         if input.strafe_right {
-            delta_x -= side_x * movement_step;
-            delta_y -= side_y * movement_step;
+            delta_x += side_x * movement_step;
+            delta_y += side_y * movement_step;
         }
 
         // Primero se aplica el movimiento normal; luego el dash si fue presionado.

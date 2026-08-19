@@ -31,6 +31,6 @@ pub const COLLISION_STEP: f32 = 0.07;
 pub const MESSAGE_DURATION: f32 = 2.8;
 
 /// Tamano en pixeles de cada celda del minimapa.
-pub const MINIMAP_CELL_SIZE: usize = 10;
+pub const MINIMAP_CELL_SIZE: usize = 6;
 /// Separacion del minimapa respecto al borde de la ventana.
 pub const MINIMAP_PADDING: usize = 12;

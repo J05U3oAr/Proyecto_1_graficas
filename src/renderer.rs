@@ -185,11 +185,19 @@ impl Renderer {
 
     /// Dibuja una vista superior compacta del mapa.
     fn draw_minimap(&mut self, map: &Map, player: &Player) {
-        let scale = MINIMAP_CELL_SIZE;
+        let max_width_scale =
+            self.width.saturating_sub(MINIMAP_PADDING * 2).max(1) / map.width().max(1);
+        let max_height_scale =
+            self.height.saturating_sub(MINIMAP_PADDING * 2).max(1) / map.height().max(1);
+        let scale = MINIMAP_CELL_SIZE
+            .min(max_width_scale)
+            .min(max_height_scale)
+            .max(1);
         let map_width = map.width() * scale;
         let map_height = map.height() * scale;
         let origin_x = self.width.saturating_sub(map_width + MINIMAP_PADDING);
         let origin_y = MINIMAP_PADDING;
+        let cell_size = scale.saturating_sub(1).max(1);
 
         self.fill_rect(
             origin_x.saturating_sub(4),
@@ -211,8 +219,8 @@ impl Renderer {
                 self.fill_rect(
                     origin_x + x * scale,
                     origin_y + y * scale,
-                    scale - 1,
-                    scale - 1,
+                    cell_size,
+                    cell_size,
                     color,
                 );
             }
@@ -220,10 +228,12 @@ impl Renderer {
 
         let player_x = origin_x as i32 + (player.x * scale as f32) as i32;
         let player_y = origin_y as i32 + (player.y * scale as f32) as i32;
-        self.fill_circle(player_x, player_y, 4, 0xffffff);
+        let player_radius = (scale as i32 / 2).max(2);
+        self.fill_circle(player_x, player_y, player_radius, 0xffffff);
 
-        let line_x = player_x + (player.angle.cos() * 12.0) as i32;
-        let line_y = player_y + (player.angle.sin() * 12.0) as i32;
+        let direction_length = (scale as f32 * 2.0).max(6.0);
+        let line_x = player_x + (player.angle.cos() * direction_length) as i32;
+        let line_y = player_y + (player.angle.sin() * direction_length) as i32;
         self.draw_line(player_x, player_y, line_x, line_y, 0xfff36b);
 
         let cooldown_ratio = player.dash_cooldown_ratio();
