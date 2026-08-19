@@ -1,10 +1,13 @@
 //! Pared perseguidora con activacion por rango y pathfinding por celdas.
 //!
-//! Permanece quieta hasta que el jugador entra en su radio de deteccion. Una
+//! Patrulla pasillos hasta que el jugador entra en su radio de deteccion. Una
 //! vez activa, recalcula una ruta por la grilla y se apaga si el jugador logra
 //! alejarse lo suficiente.
 
-use std::collections::VecDeque;
+use std::{
+    collections::{HashMap, VecDeque},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use crate::{
     config::{
@@ -14,6 +17,9 @@ use crate::{
     map::Map,
     player::Player,
 };
+
+/// Velocidad usada cuando la pared patrulla sin perseguir al jugador.
+const CHASER_PATROL_SPEED: f32 = CHASER_SPEED * 0.68;
 
 /// Evento producido por la pared perseguidora durante el frame.
 pub enum ChaserEvent {
@@ -36,6 +42,16 @@ pub struct Chaser {
     active: bool,
     path: Vec<(i32, i32)>,
     repath_timer: f32,
+    patrol_target: Option<(i32, i32)>,
+    patrol_direction: (i32, i32),
+    visit_counts: HashMap<(i32, i32), u32>,
+    rng_state: u32,
+}
+
+#[derive(Clone, Copy)]
+struct PatrolChoice {
+    cell: (i32, i32),
+    direction: (i32, i32),
 }
 
 impl Chaser {
@@ -49,6 +65,10 @@ impl Chaser {
             active: false,
             path: Vec::new(),
             repath_timer: 0.0,
+            patrol_target: None,
+            patrol_direction: (-1, 0),
+            visit_counts: HashMap::new(),
+            rng_state: random_seed(x, y),
         }
     }
 
@@ -64,6 +84,9 @@ impl Chaser {
         self.active = false;
         self.path.clear();
         self.repath_timer = 0.0;
+        self.patrol_target = None;
+        self.visit_counts.clear();
+        self.advance_rng();
     }
 
     /// Actualiza deteccion, ruta y movimiento.
@@ -79,6 +102,16 @@ impl Chaser {
         if !self.active {
             if distance_to_player <= CHASER_WAKE_DISTANCE {
                 self.active = true;
+                self.patrol_target = None;
+                self.repath(map, player);
+                return Some(ChaserEvent::Spotted);
+            }
+
+            self.patrol(map, dt);
+
+            if self.distance_to_player(player) <= CHASER_WAKE_DISTANCE {
+                self.active = true;
+                self.patrol_target = None;
                 self.repath(map, player);
                 return Some(ChaserEvent::Spotted);
             }
@@ -89,6 +122,7 @@ impl Chaser {
         if distance_to_player >= CHASER_LOSE_DISTANCE {
             self.active = false;
             self.path.clear();
+            self.patrol_target = None;
             return Some(ChaserEvent::Lost);
         }
 
@@ -145,6 +179,132 @@ impl Chaser {
             self.path.clear();
         }
     }
+
+    fn patrol(&mut self, map: &Map, dt: f32) {
+        if self.patrol_target.is_none() {
+            self.patrol_target = self.next_patrol_cell(map);
+        }
+
+        let Some((target_cell_x, target_cell_y)) = self.patrol_target else {
+            return;
+        };
+
+        let target_x = target_cell_x as f32 + 0.5;
+        let target_y = target_cell_y as f32 + 0.5;
+        let delta_x = target_x - self.x;
+        let delta_y = target_y - self.y;
+        let distance = delta_x.hypot(delta_y);
+
+        if distance < 0.04 {
+            self.x = target_x;
+            self.y = target_y;
+            self.record_visit((target_cell_x, target_cell_y));
+            self.patrol_target = self.next_patrol_cell(map);
+            return;
+        }
+
+        let step = (CHASER_PATROL_SPEED * dt).min(distance);
+        let next_x = self.x + delta_x / distance * step;
+        let next_y = self.y + delta_y / distance * step;
+
+        if map.can_stand_at(next_x, next_y, CHASER_RADIUS) {
+            self.x = next_x;
+            self.y = next_y;
+        } else {
+            self.patrol_target = None;
+        }
+    }
+
+    fn next_patrol_cell(&mut self, map: &Map) -> Option<(i32, i32)> {
+        let current = (self.x.floor() as i32, self.y.floor() as i32);
+        let direction = self.patrol_direction;
+        let forward_cell = add_cell(current, direction);
+        let right_direction = (-direction.1, direction.0);
+        let left_direction = (direction.1, -direction.0);
+        let right_cell = add_cell(current, right_direction);
+        let left_cell = add_cell(current, left_direction);
+
+        let mut choices = Vec::new();
+
+        for (cell, direction) in [
+            (forward_cell, direction),
+            (right_cell, right_direction),
+            (left_cell, left_direction),
+        ] {
+            if map.is_walkable_cell(cell.0, cell.1) {
+                choices.push(PatrolChoice { cell, direction });
+            }
+        }
+
+        if !choices.is_empty() {
+            let min_visits = choices
+                .iter()
+                .map(|choice| self.visit_count(choice.cell))
+                .min()
+                .expect("choices no esta vacio");
+
+            let least_visited: Vec<_> = choices
+                .iter()
+                .copied()
+                .filter(|choice| self.visit_count(choice.cell) == min_visits)
+                .collect();
+
+            let choice = least_visited[self.random_index(least_visited.len())];
+            self.patrol_direction = choice.direction;
+            return Some(choice.cell);
+        }
+
+        let backward_direction = (-direction.0, -direction.1);
+        let backward_cell = add_cell(current, backward_direction);
+
+        if map.is_walkable_cell(backward_cell.0, backward_cell.1) {
+            self.patrol_direction = backward_direction;
+            return Some(backward_cell);
+        }
+
+        for fallback_direction in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            let fallback_cell = add_cell(current, fallback_direction);
+
+            if map.is_walkable_cell(fallback_cell.0, fallback_cell.1) {
+                self.patrol_direction = fallback_direction;
+                return Some(fallback_cell);
+            }
+        }
+
+        None
+    }
+
+    fn visit_count(&self, cell: (i32, i32)) -> u32 {
+        self.visit_counts.get(&cell).copied().unwrap_or(0)
+    }
+
+    fn record_visit(&mut self, cell: (i32, i32)) {
+        *self.visit_counts.entry(cell).or_insert(0) += 1;
+    }
+
+    fn random_index(&mut self, len: usize) -> usize {
+        (self.advance_rng() as usize) % len
+    }
+
+    fn advance_rng(&mut self) -> u32 {
+        self.rng_state = self
+            .rng_state
+            .wrapping_mul(1_664_525)
+            .wrapping_add(1_013_904_223);
+        self.rng_state
+    }
+}
+
+fn add_cell(cell: (i32, i32), direction: (i32, i32)) -> (i32, i32) {
+    (cell.0 + direction.0, cell.1 + direction.1)
+}
+
+fn random_seed(x: f32, y: f32) -> u32 {
+    let time_seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.subsec_nanos());
+
+    time_seed ^ x.to_bits().rotate_left(11) ^ y.to_bits().rotate_right(7)
 }
 
 fn find_path(map: &Map, start: (i32, i32), goal: (i32, i32)) -> Vec<(i32, i32)> {
