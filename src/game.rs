@@ -49,7 +49,7 @@ impl Game {
     pub fn new() -> Result<Self, minifb::Error> {
         let (window_width, window_height) = window_size();
         let mut window = Window::new(
-            "Ray Caster - Proyecto 1",
+            "SITIO-19 - Protocolo de Contencion",
             window_width,
             window_height,
             WindowOptions {
@@ -85,7 +85,7 @@ impl Game {
             fps_timer: Instant::now(),
             frame_counter: 0,
             displayed_fps: 0,
-            message: "FIND KEY",
+            message: "FIND ACCESS CARD",
             message_timer: MESSAGE_DURATION,
             mouse_centered: false,
         })
@@ -149,7 +149,7 @@ impl Game {
             self.fps_timer = now;
 
             self.window.set_title(&format!(
-                "Ray Caster - Proyecto 1 | FPS: {}",
+                "SITIO-19 | FPS: {}",
                 self.displayed_fps
             ));
         }
@@ -159,12 +159,12 @@ impl Game {
     fn update_chaser(&mut self, dt: f32) {
         if let Some(event) = self.chaser.update(&self.map, &self.player, dt) {
             self.message = match event {
-                ChaserEvent::Spotted => "WALL CHASING",
-                ChaserEvent::Lost => "WALL LOST",
+                ChaserEvent::Spotted => "ANOMALY DETECTED",
+                ChaserEvent::Lost => "ANOMALY LOST",
                 ChaserEvent::HitPlayer => {
                     self.player.take_hit_and_respawn();
                     self.chaser.reset();
-                    "WALL HIT"
+                    "CONTACT REINITIALIZING"
                 }
             };
             self.message_timer = MESSAGE_DURATION;
@@ -186,11 +186,11 @@ impl Game {
     /// Mensaje persistente que guia al jugador cuando no hay evento reciente.
     fn current_goal_message(&self) -> &'static str {
         if self.map.completed() {
-            "LEVEL COMPLETE"
+            "SITE SECURED"
         } else if !self.map.has_key() {
-            "FIND KEY"
+            "FIND ACCESS CARD"
         } else if !self.map.switch_pressed() {
-            "PRESS SWITCH"
+            "ACTIVATE TERMINAL"
         } else {
             "REACH EXIT"
         }

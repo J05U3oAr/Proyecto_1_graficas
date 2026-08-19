@@ -268,22 +268,22 @@ impl Renderer {
         self.draw_text(12, 12, &format!("FPS {}", fps), 0xffffff, 3);
         self.draw_text(12, 34, &format!("HP {}", player.lives), 0xfff0a3, 3);
 
-        let key_text = if map.has_key() { "KEY YES" } else { "KEY NO" };
+        let key_text = if map.has_key() { "CARD YES" } else { "CARD NO" };
         let gate_text = if map.gate_open() {
-            "GATE OPEN"
+            "DOOR OPEN"
         } else {
-            "GATE SHUT"
+            "DOOR SHUT"
         };
 
         self.draw_text(12, 60, key_text, 0xffdd57, 2);
-        self.draw_text(12, 78, gate_text, 0x8ecae6, 2);
+        self.draw_text(12, 78, gate_text, 0x9db4c4, 2);
         self.draw_text(
             12,
             96,
             if chaser.active() {
-                "WALL HUNT"
+                "ANOMALY HUNTING"
             } else {
-                "WALL QUIET"
+                "ANOMALY DORMANT"
             },
             if chaser.active() { 0xff6b6b } else { 0xa9b4c4 },
             2,
@@ -530,14 +530,14 @@ fn cast_ray(map: &Map, pos_x: f32, pos_y: f32, ray_dir_x: f32, ray_dir_y: f32) -
 /// Color usado por cada tile en el minimapa.
 fn minimap_color(tile: u8) -> u32 {
     match tile {
-        TILE_WALL => 0x8ecae6,
+        TILE_WALL => 0x4a5a52,
         TILE_GATE => 0xffb703,
-        TILE_METAL => 0xfb8500,
-        TILE_RUINS => 0xc77dff,
+        TILE_METAL => 0x7c92a3,
+        TILE_RUINS => 0x39b24a,
         TILE_KEY => 0xffdd57,
         TILE_SWITCH => 0x4cc9f0,
         TILE_EXIT => 0xb7efc5,
-        _ => 0xe0e0e0,
+        _ => 0xc9d1c8,
     }
 }
 
@@ -586,24 +586,24 @@ fn sprite_color(tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> 
             if !inside {
                 None
             } else if alert_crack {
-                Some(0xff3b30)
+                Some(0xff5a1f)
             } else if border {
                 Some(if tile == SPRITE_CHASER_ACTIVE {
-                    0x6f1d1b
+                    0x4a1010
                 } else {
-                    0x3d4a52
+                    0x2a2d2f
                 })
             } else if mortar {
                 Some(if tile == SPRITE_CHASER_ACTIVE {
-                    0xb33939
+                    0x9c2a2a
                 } else {
-                    0x5f747d
+                    0x3a3d3f
                 })
             } else {
                 Some(if tile == SPRITE_CHASER_ACTIVE {
-                    0x8f2d2d
+                    0x6e1c1c
                 } else {
-                    0x7f949c
+                    0x4a4f52
                 })
             }
         }
@@ -611,22 +611,25 @@ fn sprite_color(tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> 
     }
 }
 
-/// Precalcula cielo y piso para copiarlo al inicio de cada frame.
+/// Precalcula techo y piso para copiarlo al inicio de cada frame.
+///
+/// Tonos bajos y con tinte verdoso, como luz de emergencia en un complejo
+/// que quedo funcionando solo con energia de respaldo.
 fn build_background(width: usize, height: usize) -> Vec<u32> {
     let mut background = vec![0; width * height];
     let horizon = height / 2;
 
     for y in 0..horizon {
-        let shade = 38 + (y as u32 * 34 / horizon as u32);
-        let color = rgb(shade, shade + 8, shade + 18);
+        let shade = 10 + (y as u32 * 16 / horizon as u32);
+        let color = rgb(shade, shade + 5, shade + 2);
         let row_start = y * width;
         background[row_start..row_start + width].fill(color);
     }
 
     for y in horizon..height {
         let depth = (y - horizon) as u32;
-        let shade = 54_u32.saturating_sub(depth * 22 / horizon as u32);
-        let color = rgb(shade + 20, shade + 17, shade + 12);
+        let shade = 26_u32.saturating_sub(depth * 14 / horizon as u32);
+        let color = rgb(shade + 6, shade + 8, shade + 6);
         let row_start = y * width;
         background[row_start..row_start + width].fill(color);
     }
@@ -635,9 +638,13 @@ fn build_background(width: usize, height: usize) -> Vec<u32> {
 }
 
 /// Factor de sombreado por lado y distancia para dar profundidad.
+///
+/// El minimo de oscuridad se bajo bastante: lo que esta lejos casi
+/// desaparece, para que el jugador dependa de acercarse (o del minimapa)
+/// en vez de ver todo el pasillo de un vistazo.
 fn wall_shade_factor(side: i32, distance: f32) -> f32 {
     let side_factor = if side == 1 { 0.72 } else { 1.0 };
-    let distance_factor = (1.0 / (1.0 + distance * 0.08)).clamp(0.35, 1.0);
+    let distance_factor = (1.0 / (1.0 + distance * 0.11)).clamp(0.16, 1.0);
 
     side_factor * distance_factor
 }

@@ -32,10 +32,14 @@ pub const MESSAGE_DURATION: f32 = 2.8;
 
 /// Velocidad del perseguidor en celdas por segundo.
 pub const CHASER_SPEED: f32 = 2.2;
-/// Distancia a la que la pared perseguidora detecta al jugador.
-pub const CHASER_WAKE_DISTANCE: f32 = 7.0;
-/// Distancia a la que el jugador logra perder a la pared perseguidora.
-pub const CHASER_LOSE_DISTANCE: f32 = 11.0;
+/// Distancia a la que la anomalia detecta al jugador.
+/// Se acorto un poco respecto al original para que el susto de activacion
+/// llegue mas de cerca, en vez de sentirse detectado desde lejos.
+pub const CHASER_WAKE_DISTANCE: f32 = 6.0;
+/// Distancia a la que el jugador logra perder a la anomalia.
+/// Se alargo para que, una vez que empieza la persecucion, cueste mas
+/// cortarla del todo y la tension dure mas tiempo.
+pub const CHASER_LOSE_DISTANCE: f32 = 13.0;
 /// Radio de colision usado por la pared perseguidora.
 pub const CHASER_RADIUS: f32 = 0.22;
 /// Distancia a la que la pared perseguidora golpea al jugador.
