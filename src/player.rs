@@ -23,8 +23,6 @@ pub struct Player {
     pub lives: u8,
     /// Tiempo restante antes de poder usar dash otra vez.
     dash_cooldown: f32,
-    /// Bandera temporal que se activa al tocar un hazard.
-    touched_hazard: bool,
     /// Posicion X de respawn.
     spawn_x: f32,
     /// Posicion Y de respawn.
@@ -42,7 +40,6 @@ impl Player {
             angle,
             lives: 3,
             dash_cooldown: 0.0,
-            touched_hazard: false,
             spawn_x: x,
             spawn_y: y,
             spawn_angle: angle,
@@ -54,14 +51,8 @@ impl Player {
         (self.dash_cooldown / DASH_COOLDOWN).clamp(0.0, 1.0)
     }
 
-    /// Indica si durante este frame el jugador piso un hazard.
-    pub fn touched_hazard(&self) -> bool {
-        self.touched_hazard
-    }
-
     /// Actualiza mirada con mouse, movimiento, colisiones y dash.
     pub fn update(&mut self, input: &InputState, map: &Map, dt: f32) {
-        self.touched_hazard = false;
         self.dash_cooldown = (self.dash_cooldown - dt).max(0.0);
         self.angle += input.mouse_delta_x * MOUSE_SENSITIVITY;
 
@@ -114,7 +105,6 @@ impl Player {
         self.x = self.spawn_x;
         self.y = self.spawn_y;
         self.angle = self.spawn_angle;
-        self.touched_hazard = false;
     }
 
     /// Divide un movimiento grande en pasos pequenos para mejorar colisiones.
@@ -141,10 +131,6 @@ impl Player {
 
         if map.can_stand_at(self.x, next_y, PLAYER_RADIUS) {
             self.y = next_y;
-        }
-
-        if map.player_touches_hazard(self.x, self.y, PLAYER_RADIUS) {
-            self.touched_hazard = true;
         }
     }
 }

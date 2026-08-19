@@ -3,7 +3,7 @@
 //! El mapa se guarda como una grilla 2D compacta. Cada celda contiene un
 //! numero que representa piso, pared, obstaculo, llave, switch o salida.
 
-use crate::{config::PLAYER_RADIUS, player::Player};
+use crate::player::Player;
 
 /// Celda vacia por la que el jugador puede caminar.
 pub const TILE_FLOOR: u8 = 0;
@@ -15,8 +15,6 @@ pub const TILE_GATE: u8 = 2;
 pub const TILE_METAL: u8 = 3;
 /// Obstaculo/pared con material de ruinas.
 pub const TILE_RUINS: u8 = 5;
-/// Peligro que hace respawn al jugador.
-pub const TILE_HAZARD: u8 = 6;
 /// Llave que desbloquea la posibilidad de abrir la puerta.
 pub const TILE_KEY: u8 = 7;
 /// Interruptor que abre la puerta si ya se obtuvo la llave.
@@ -45,29 +43,29 @@ impl Map {
     pub fn level_one() -> Self {
         let rows = [
             "1111111111111111111111111111111",
-            "1000100000001000180010000060301",
+            "1000100000001000180010000000301",
             "1110111011301010105010111110101",
-            "1010000010001016001000100010001",
+            "1010000010001010001000100010001",
             "1011111510111011111031101011101",
             "1000100010100010000010000017001",
             "1011101010101111111110111010111",
-            "1010001000100000000000160010101",
+            "1010001000100000000000100010101",
             "1010111111101151131110101110101",
             "1000100000100000100010301000029",
-            "1015361110111111101010101113111",
+            "1015301110111111101010101113111",
             "1010001010000000101010100010001",
-            "1010111011111130101016111010161",
+            "1010111011111130101010111010101",
             "1010100000100010001010001010101",
             "1010101011501011111011103010101",
             "1010103000001000001010001000101",
             "1010111111101011101010111111501",
-            "1010100000001010306010000000101",
+            "1010100000001010300010000000101",
             "1010101101101010151113111111101",
-            "1010001000061000100000000030001",
+            "1010001000001000100000000030001",
             "1011115031111110111011111010111",
-            "1000601000100010001000100010001",
+            "1000001000100010001000100010001",
             "1111101110101011100010105111101",
-            "1000000000101000000010000006001",
+            "1000000000101000000010000000001",
             "1111111111111111111111111111111",
         ];
 
@@ -103,6 +101,11 @@ impl Map {
     /// Posicion y angulo inicial del jugador.
     pub fn player_spawn(&self) -> (f32, f32, f32) {
         (2.5, 1.5, 0.15)
+    }
+
+    /// Posicion inicial de la pared perseguidora.
+    pub fn chaser_spawn(&self) -> (f32, f32) {
+        (27.5, 23.5)
     }
 
     /// Devuelve si el jugador ya recogio la llave.
@@ -145,14 +148,6 @@ impl Map {
         }
     }
 
-    /// Indica si un rayo de vision debe detenerse en esta celda.
-    pub fn is_ray_blocking(&self, x: i32, y: i32) -> bool {
-        matches!(
-            self.displayed_tile_at(x, y),
-            TILE_WALL | TILE_GATE | TILE_METAL | TILE_RUINS
-        )
-    }
-
     /// Revisa si el jugador puede ocupar una posicion circular.
     pub fn can_stand_at(&self, x: f32, y: f32, radius: f32) -> bool {
         // Se prueban las esquinas del radio para evitar cruzar paredes en diagonal.
@@ -169,20 +164,15 @@ impl Map {
         })
     }
 
-    /// Devuelve si el radio del jugador toca algun hazard.
-    pub fn player_touches_hazard(&self, x: f32, y: f32, radius: f32) -> bool {
-        self.player_touches_tile(x, y, radius, TILE_HAZARD)
+    /// Indica si una celda puede ser usada por entidades que caminan.
+    pub fn is_walkable_cell(&self, x: i32, y: i32) -> bool {
+        !self.blocks_player(self.displayed_tile_at(x, y))
     }
 
     /// Aplica interacciones del jugador con tiles especiales del mapa.
     pub fn update_player_interactions(&mut self, player: &mut Player) -> Option<&'static str> {
         if self.completed {
             return None;
-        }
-
-        if self.player_touches_hazard(player.x, player.y, PLAYER_RADIUS) {
-            player.take_hit_and_respawn();
-            return Some("SPIKES HIT");
         }
 
         let tile_x = player.x.floor() as i32;
@@ -219,26 +209,11 @@ impl Map {
     /// Regla de colision fisica para cada tipo de tile.
     fn blocks_player(&self, tile: u8) -> bool {
         match tile {
-            TILE_FLOOR | TILE_HAZARD | TILE_KEY | TILE_SWITCH | TILE_EXIT => false,
+            TILE_FLOOR | TILE_KEY | TILE_SWITCH | TILE_EXIT => false,
             TILE_GATE => !self.gate_open(),
             TILE_WALL | TILE_METAL | TILE_RUINS => true,
             _ => true,
         }
-    }
-
-    /// Revisa varios puntos alrededor del jugador contra un tile objetivo.
-    fn player_touches_tile(&self, x: f32, y: f32, radius: f32, target_tile: u8) -> bool {
-        let checks = [
-            (x, y),
-            (x - radius, y - radius),
-            (x + radius, y - radius),
-            (x - radius, y + radius),
-            (x + radius, y + radius),
-        ];
-
-        checks.iter().any(|(check_x, check_y)| {
-            self.tile_at(check_x.floor() as i32, check_y.floor() as i32) == target_tile
-        })
     }
 
     /// Cambia una celda del mapa si esta dentro de limites.

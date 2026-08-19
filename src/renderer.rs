@@ -5,14 +5,18 @@
 //! para pintar formas/texto.
 
 use crate::{
+    chaser::Chaser,
     config::{FOV_FACTOR, MINIMAP_CELL_SIZE, MINIMAP_PADDING},
     map::{
-        Map, TILE_EXIT, TILE_FLOOR, TILE_GATE, TILE_HAZARD, TILE_KEY, TILE_METAL, TILE_RUINS,
-        TILE_SWITCH, TILE_WALL,
+        Map, TILE_EXIT, TILE_FLOOR, TILE_GATE, TILE_KEY, TILE_METAL, TILE_RUINS, TILE_SWITCH,
+        TILE_WALL,
     },
     player::Player,
     texture::{TEXTURE_SIZE, wall_texel},
 };
+
+const SPRITE_CHASER_IDLE: u8 = 10;
+const SPRITE_CHASER_ACTIVE: u8 = 11;
 
 /// Renderer basado en un buffer de pixeles RGB.
 pub struct Renderer {
@@ -22,6 +26,8 @@ pub struct Renderer {
     height: usize,
     /// Pixeles RGB que se envian a `minifb`.
     buffer: Vec<u32>,
+    /// Fondo precalculado de cielo y piso.
+    background: Vec<u32>,
     /// Distancia de pared por columna, usada para ocultar sprites detras.
     depth_buffer: Vec<f32>,
 }
@@ -41,10 +47,13 @@ struct RayHit {
 impl Renderer {
     /// Crea un renderer con buffer de color y buffer de profundidad.
     pub fn new(width: usize, height: usize) -> Self {
+        let background = build_background(width, height);
+
         Self {
             width,
             height,
-            buffer: vec![0; width * height],
+            buffer: background.clone(),
+            background,
             depth_buffer: vec![f32::INFINITY; width],
         }
     }
@@ -55,28 +64,12 @@ impl Renderer {
     }
 
     /// Dibuja un frame completo en el orden correcto de capas.
-    pub fn render(&mut self, map: &Map, player: &Player, fps: u32, message: &str) {
-        self.draw_background();
+    pub fn render(&mut self, map: &Map, player: &Player, chaser: &Chaser, fps: u32, message: &str) {
+        self.buffer.copy_from_slice(&self.background);
         self.draw_walls(map, player);
-        self.draw_sprites(map, player);
-        self.draw_minimap(map, player);
-        self.draw_hud(map, player, fps, message);
-    }
-
-    /// Pinta cielo y piso con gradientes simples.
-    fn draw_background(&mut self) {
-        let horizon = self.height / 2;
-
-        for y in 0..horizon {
-            let shade = 38 + (y as u32 * 34 / horizon as u32);
-            self.draw_horizontal_line(y, rgb(shade, shade + 8, shade + 18));
-        }
-
-        for y in horizon..self.height {
-            let depth = (y - horizon) as u32;
-            let shade = 54_u32.saturating_sub(depth * 22 / horizon as u32);
-            self.draw_horizontal_line(y, rgb(shade + 20, shade + 17, shade + 12));
-        }
+        self.draw_sprites(map, player, chaser);
+        self.draw_minimap(map, player, chaser);
+        self.draw_hud(map, player, chaser, fps, message);
     }
 
     /// Dibuja las paredes visibles usando raycasting columna por columna.
@@ -103,22 +96,22 @@ impl Renderer {
             let texture_step = TEXTURE_SIZE as f32 / line_height.max(1) as f32;
             let mut texture_y =
                 (draw_start as i32 - center_y + line_height / 2) as f32 * texture_step;
+            let shade_factor = wall_shade_factor(hit.side, hit.distance);
 
             for y in draw_start..=draw_end {
                 // Se muestrea la textura y luego se oscurece por distancia/lado.
-                let color = shade_wall(
+                let color = shade_color(
                     wall_texel(hit.wall_id, hit.texture_x, texture_y as usize),
-                    hit.side,
-                    hit.distance,
+                    shade_factor,
                 );
-                self.put_pixel(screen_x, y, color);
+                self.buffer[y * self.width + screen_x] = color;
                 texture_y += texture_step;
             }
         }
     }
 
     /// Dibuja objetos 2D dentro del mundo 3D.
-    fn draw_sprites(&mut self, map: &Map, player: &Player) {
+    fn draw_sprites(&mut self, map: &Map, player: &Player, chaser: &Chaser) {
         let mut sprites = Vec::new();
 
         // Recolecta tiles especiales que se representan como sprites.
@@ -126,7 +119,7 @@ impl Renderer {
             for x in 0..map.width() {
                 let tile = map.tile_at(x as i32, y as i32);
 
-                if matches!(tile, TILE_HAZARD | TILE_KEY | TILE_SWITCH | TILE_EXIT) {
+                if matches!(tile, TILE_KEY | TILE_SWITCH | TILE_EXIT) {
                     let sprite_x = x as f32 + 0.5;
                     let sprite_y = y as f32 + 0.5;
                     let distance = (sprite_x - player.x).hypot(sprite_y - player.y);
@@ -134,6 +127,14 @@ impl Renderer {
                 }
             }
         }
+
+        let chaser_tile = if chaser.active() {
+            SPRITE_CHASER_ACTIVE
+        } else {
+            SPRITE_CHASER_IDLE
+        };
+        let chaser_distance = (chaser.x - player.x).hypot(chaser.y - player.y);
+        sprites.push((chaser_distance, chaser.x, chaser.y, chaser_tile));
 
         // Se dibuja de lejos a cerca para que los sprites se tapen bien entre si.
         sprites.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -156,7 +157,11 @@ impl Renderer {
             }
 
             let screen_x = ((self.width as f32 / 2.0) * (1.0 + transform_x / transform_y)) as i32;
-            let size_scale = if tile == TILE_HAZARD { 0.62 } else { 0.46 };
+            let size_scale = if matches!(tile, SPRITE_CHASER_IDLE | SPRITE_CHASER_ACTIVE) {
+                0.96
+            } else {
+                0.46
+            };
             let sprite_size = (self.height as f32 * size_scale / transform_y.abs()) as i32;
             let center_y = self.height as i32 / 2;
             let start_y = (-sprite_size / 2 + center_y).max(0);
@@ -176,7 +181,7 @@ impl Renderer {
                     if let Some(color) =
                         sprite_color(tile, stripe - start_x, y - start_y, sprite_size.max(1))
                     {
-                        self.put_pixel(stripe_index, y as usize, color);
+                        self.buffer[y as usize * self.width + stripe_index] = color;
                     }
                 }
             }
@@ -184,7 +189,7 @@ impl Renderer {
     }
 
     /// Dibuja una vista superior compacta del mapa.
-    fn draw_minimap(&mut self, map: &Map, player: &Player) {
+    fn draw_minimap(&mut self, map: &Map, player: &Player, chaser: &Chaser) {
         let max_width_scale =
             self.width.saturating_sub(MINIMAP_PADDING * 2).max(1) / map.width().max(1);
         let max_height_scale =
@@ -236,6 +241,17 @@ impl Renderer {
         let line_y = player_y + (player.angle.sin() * direction_length) as i32;
         self.draw_line(player_x, player_y, line_x, line_y, 0xfff36b);
 
+        let chaser_x = origin_x as i32 + (chaser.x * scale as f32) as i32;
+        let chaser_y = origin_y as i32 + (chaser.y * scale as f32) as i32;
+        let chaser_color = if chaser.active() { 0xe63946 } else { 0x9aa4ad };
+        self.fill_rect(
+            (chaser_x - player_radius).max(0) as usize,
+            (chaser_y - player_radius).max(0) as usize,
+            (player_radius * 2 + 1) as usize,
+            (player_radius * 2 + 1) as usize,
+            chaser_color,
+        );
+
         let cooldown_ratio = player.dash_cooldown_ratio();
 
         if cooldown_ratio > 0.0 {
@@ -248,7 +264,7 @@ impl Renderer {
     }
 
     /// Dibuja textos de estado: FPS, vida, llave, puerta y objetivo.
-    fn draw_hud(&mut self, map: &Map, player: &Player, fps: u32, message: &str) {
+    fn draw_hud(&mut self, map: &Map, player: &Player, chaser: &Chaser, fps: u32, message: &str) {
         self.draw_text(12, 12, &format!("FPS {}", fps), 0xffffff, 3);
         self.draw_text(12, 34, &format!("HP {}", player.lives), 0xfff0a3, 3);
 
@@ -261,6 +277,17 @@ impl Renderer {
 
         self.draw_text(12, 60, key_text, 0xffdd57, 2);
         self.draw_text(12, 78, gate_text, 0x8ecae6, 2);
+        self.draw_text(
+            12,
+            96,
+            if chaser.active() {
+                "WALL HUNT"
+            } else {
+                "WALL QUIET"
+            },
+            if chaser.active() { 0xff6b6b } else { 0xa9b4c4 },
+            2,
+        );
         self.draw_text(12, self.height.saturating_sub(34), message, 0xffffff, 3);
         self.draw_text(
             12,
@@ -315,13 +342,6 @@ impl Renderer {
         }
     }
 
-    /// Pinta una fila completa del buffer.
-    fn draw_horizontal_line(&mut self, y: usize, color: u32) {
-        let row_start = y * self.width;
-        let row_end = row_start + self.width;
-        self.buffer[row_start..row_end].fill(color);
-    }
-
     /// Pinta un pixel si esta dentro del buffer.
     fn put_pixel(&mut self, x: usize, y: usize, color: u32) {
         if x < self.width && y < self.height {
@@ -331,10 +351,16 @@ impl Renderer {
 
     /// Rellena un rectangulo recortandolo contra los bordes de pantalla.
     fn fill_rect(&mut self, x: usize, y: usize, rect_width: usize, rect_height: usize, color: u32) {
-        for draw_y in y..(y + rect_height).min(self.height) {
-            for draw_x in x..(x + rect_width).min(self.width) {
-                self.put_pixel(draw_x, draw_y, color);
-            }
+        if x >= self.width || y >= self.height {
+            return;
+        }
+
+        let end_x = x.saturating_add(rect_width).min(self.width);
+        let end_y = y.saturating_add(rect_height).min(self.height);
+
+        for draw_y in y..end_y {
+            let row_start = draw_y * self.width;
+            self.buffer[row_start + x..row_start + end_x].fill(color);
         }
     }
 
@@ -466,7 +492,7 @@ fn cast_ray(map: &Map, pos_x: f32, pos_y: f32, ray_dir_x: f32, ray_dir_y: f32) -
 
         wall_id = map.displayed_tile_at(map_x, map_y);
 
-        if map.is_ray_blocking(map_x, map_y) {
+        if matches!(wall_id, TILE_WALL | TILE_GATE | TILE_METAL | TILE_RUINS) {
             break;
         }
     }
@@ -508,7 +534,6 @@ fn minimap_color(tile: u8) -> u32 {
         TILE_GATE => 0xffb703,
         TILE_METAL => 0xfb8500,
         TILE_RUINS => 0xc77dff,
-        TILE_HAZARD => 0xe63946,
         TILE_KEY => 0xffdd57,
         TILE_SWITCH => 0x4cc9f0,
         TILE_EXIT => 0xb7efc5,
@@ -539,13 +564,6 @@ fn sprite_color(tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> 
                 None
             }
         }
-        TILE_HAZARD => {
-            if ny > -0.65 && ny < 0.72 && nx.abs() < 0.85 - ny.abs() * 0.35 {
-                Some(if ny < -0.18 { 0xffb703 } else { 0xd62828 })
-            } else {
-                None
-            }
-        }
         TILE_EXIT => {
             let dist = nx.hypot(ny);
 
@@ -557,16 +575,75 @@ fn sprite_color(tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> 
                 None
             }
         }
+        SPRITE_CHASER_IDLE | SPRITE_CHASER_ACTIVE => {
+            let inside = nx.abs() < 0.72 && ny.abs() < 0.88;
+            let border = nx.abs() > 0.62 || ny.abs() > 0.78;
+            let mortar = local_y.rem_euclid((size / 5).max(4)) <= 1
+                || (local_x + (local_y / 12) * 7).rem_euclid((size / 4).max(5)) <= 1;
+            let alert_crack =
+                tile == SPRITE_CHASER_ACTIVE && (local_x * 3 + local_y * 5).rem_euclid(31) < 3;
+
+            if !inside {
+                None
+            } else if alert_crack {
+                Some(0xff3b30)
+            } else if border {
+                Some(if tile == SPRITE_CHASER_ACTIVE {
+                    0x6f1d1b
+                } else {
+                    0x3d4a52
+                })
+            } else if mortar {
+                Some(if tile == SPRITE_CHASER_ACTIVE {
+                    0xb33939
+                } else {
+                    0x5f747d
+                })
+            } else {
+                Some(if tile == SPRITE_CHASER_ACTIVE {
+                    0x8f2d2d
+                } else {
+                    0x7f949c
+                })
+            }
+        }
         _ => None,
     }
 }
 
-/// Aplica sombreado por lado y distancia para dar profundidad.
-fn shade_wall(color: u32, side: i32, distance: f32) -> u32 {
+/// Precalcula cielo y piso para copiarlo al inicio de cada frame.
+fn build_background(width: usize, height: usize) -> Vec<u32> {
+    let mut background = vec![0; width * height];
+    let horizon = height / 2;
+
+    for y in 0..horizon {
+        let shade = 38 + (y as u32 * 34 / horizon as u32);
+        let color = rgb(shade, shade + 8, shade + 18);
+        let row_start = y * width;
+        background[row_start..row_start + width].fill(color);
+    }
+
+    for y in horizon..height {
+        let depth = (y - horizon) as u32;
+        let shade = 54_u32.saturating_sub(depth * 22 / horizon as u32);
+        let color = rgb(shade + 20, shade + 17, shade + 12);
+        let row_start = y * width;
+        background[row_start..row_start + width].fill(color);
+    }
+
+    background
+}
+
+/// Factor de sombreado por lado y distancia para dar profundidad.
+fn wall_shade_factor(side: i32, distance: f32) -> f32 {
     let side_factor = if side == 1 { 0.72 } else { 1.0 };
     let distance_factor = (1.0 / (1.0 + distance * 0.08)).clamp(0.35, 1.0);
-    let factor = side_factor * distance_factor;
 
+    side_factor * distance_factor
+}
+
+/// Aplica un factor de sombreado ya calculado a un color RGB.
+fn shade_color(color: u32, factor: f32) -> u32 {
     let r = (((color >> 16) & 0xff) as f32 * factor) as u32;
     let g = (((color >> 8) & 0xff) as f32 * factor) as u32;
     let b = ((color & 0xff) as f32 * factor) as u32;

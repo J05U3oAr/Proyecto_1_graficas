@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use minifb::{Key, Scale, ScaleMode, Window, WindowOptions};
 
 use crate::{
+    chaser::{Chaser, ChaserEvent},
     config::{BORDERLESS_FULLSCREEN, MESSAGE_DURATION, SCREEN_HEIGHT, SCREEN_WIDTH, TARGET_FPS},
     input::InputState,
     map::Map,
@@ -25,6 +26,8 @@ pub struct Game {
     map: Map,
     /// Jugador, incluyendo posicion, angulo, vida y dash.
     player: Player,
+    /// Pared que se activa por rango y persigue al jugador.
+    chaser: Chaser,
     /// Tiempo del frame anterior para calcular delta time.
     previous_frame: Instant,
     /// Reloj usado para refrescar el contador visible de FPS.
@@ -70,12 +73,14 @@ impl Game {
 
         let map = Map::level_one();
         let (player_x, player_y, player_angle) = map.player_spawn();
+        let (chaser_x, chaser_y) = map.chaser_spawn();
 
         Ok(Self {
             window,
             renderer: Renderer::new(SCREEN_WIDTH, SCREEN_HEIGHT),
             map,
             player: Player::new(player_x, player_y, player_angle),
+            chaser: Chaser::new(chaser_x, chaser_y),
             previous_frame: Instant::now(),
             fps_timer: Instant::now(),
             frame_counter: 0,
@@ -96,11 +101,17 @@ impl Game {
             let mouse_delta_x = self.read_mouse_delta_x();
             let input = InputState::from_window(&self.window, mouse_delta_x);
             self.player.update(&input, &self.map, dt);
+            self.update_chaser(dt);
             self.update_interactions(dt);
             self.update_fps(now);
 
-            self.renderer
-                .render(&self.map, &self.player, self.displayed_fps, self.message);
+            self.renderer.render(
+                &self.map,
+                &self.player,
+                &self.chaser,
+                self.displayed_fps,
+                self.message,
+            );
 
             self.window
                 .update_with_buffer(self.renderer.buffer(), SCREEN_WIDTH, SCREEN_HEIGHT)?;
@@ -144,15 +155,27 @@ impl Game {
         }
     }
 
-    /// Procesa pickups, hazards, switch, gate y mensajes de objetivo.
+    /// Actualiza persecucion, dano por contacto y mensajes de la pared movil.
+    fn update_chaser(&mut self, dt: f32) {
+        if let Some(event) = self.chaser.update(&self.map, &self.player, dt) {
+            self.message = match event {
+                ChaserEvent::Spotted => "WALL CHASING",
+                ChaserEvent::Lost => "WALL LOST",
+                ChaserEvent::HitPlayer => {
+                    self.player.take_hit_and_respawn();
+                    self.chaser.reset();
+                    "WALL HIT"
+                }
+            };
+            self.message_timer = MESSAGE_DURATION;
+        }
+    }
+
+    /// Procesa pickups, switch, gate y mensajes de objetivo.
     fn update_interactions(&mut self, dt: f32) {
         self.message_timer = (self.message_timer - dt).max(0.0);
 
-        if self.player.touched_hazard() {
-            self.player.take_hit_and_respawn();
-            self.message = "SPIKES HIT";
-            self.message_timer = MESSAGE_DURATION;
-        } else if let Some(message) = self.map.update_player_interactions(&mut self.player) {
+        if let Some(message) = self.map.update_player_interactions(&mut self.player) {
             self.message = message;
             self.message_timer = MESSAGE_DURATION;
         } else if self.message_timer <= 0.0 {

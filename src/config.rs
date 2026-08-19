@@ -30,6 +30,19 @@ pub const COLLISION_STEP: f32 = 0.07;
 /// Duracion de los mensajes temporales del HUD.
 pub const MESSAGE_DURATION: f32 = 2.8;
 
+/// Velocidad del perseguidor en celdas por segundo.
+pub const CHASER_SPEED: f32 = 2.2;
+/// Distancia a la que la pared perseguidora detecta al jugador.
+pub const CHASER_WAKE_DISTANCE: f32 = 7.0;
+/// Distancia a la que el jugador logra perder a la pared perseguidora.
+pub const CHASER_LOSE_DISTANCE: f32 = 11.0;
+/// Radio de colision usado por la pared perseguidora.
+pub const CHASER_RADIUS: f32 = 0.22;
+/// Distancia a la que la pared perseguidora golpea al jugador.
+pub const CHASER_HIT_DISTANCE: f32 = 0.56;
+/// Frecuencia con la que recalcula su ruta hacia el jugador.
+pub const CHASER_REPATH_INTERVAL: f32 = 0.18;
+
 /// Tamano en pixeles de cada celda del minimapa.
 pub const MINIMAP_CELL_SIZE: usize = 6;
 /// Separacion del minimapa respecto al borde de la ventana.
