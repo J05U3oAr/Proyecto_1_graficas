@@ -72,6 +72,71 @@ impl Renderer {
         self.draw_hud(map, player, chaser, fps, message);
     }
 
+    /// Dibuja el menu principal con la opcion actualmente seleccionada.
+    pub fn render_main_menu(&mut self, selected_index: usize) {
+        self.draw_menu_background();
+
+        self.draw_centered_text(74, "RUN FROM YE", 0xf5f3e7, 10);
+        self.draw_centered_text(140, "ESCAPA ANTES DE QUE LA PARED DESPIERTE", 0x9db4c4, 3);
+
+        let options = ["JUGAR", "INSTRUCCIONES", "DE QUE TRATA", "SALIR"];
+        let button_width = 360;
+        let button_height = 44;
+        let button_x = self.width.saturating_sub(button_width) / 2;
+        let mut button_y = 208;
+
+        for (index, label) in options.iter().enumerate() {
+            self.draw_menu_button(
+                button_x,
+                button_y,
+                button_width,
+                button_height,
+                label,
+                index == selected_index,
+            );
+            button_y += 58;
+        }
+
+        self.draw_centered_text(
+            self.height.saturating_sub(42),
+            "W S O FLECHAS MOVER    ENTER ELEGIR    ESC SALIR",
+            0x7f8c95,
+            2,
+        );
+    }
+
+    /// Dibuja la pantalla de controles y objetivo inmediato.
+    pub fn render_instructions_screen(&mut self) {
+        self.draw_menu_background();
+        self.draw_info_panel(
+            "INSTRUCCIONES",
+            &[
+                "W O FLECHA ARRIBA AVANZAR",
+                "S O FLECHA ABAJO RETROCEDER",
+                "A D O FLECHAS MOVERSE LATERAL",
+                "MOUSE GIRAR CAMARA",
+                "Q USAR DASH",
+                "BUSCA LA TARJETA ACTIVA EL TERMINAL",
+                "ABRE LA PUERTA Y LLEGA A LA SALIDA",
+            ],
+        );
+    }
+
+    /// Dibuja la pantalla que explica el contexto del juego.
+    pub fn render_about_screen(&mut self) {
+        self.draw_menu_background();
+        self.draw_info_panel(
+            "DE QUE TRATA",
+            &[
+                "ESTAS ATRAPADO EN UN COMPLEJO ABANDONADO",
+                "UNA PARED ANOMALA DESPIERTA SI TE ACERCAS",
+                "SI TE ALCANZA VUELVES AL INICIO",
+                "RUN FROM YE ES UNA CARRERA DE TENSION",
+                "EXPLORA RECOGE LA TARJETA Y ESCAPA",
+            ],
+        );
+    }
+
     /// Dibuja las paredes visibles usando raycasting columna por columna.
     fn draw_walls(&mut self, map: &Map, player: &Player) {
         let dir_x = player.angle.cos();
@@ -430,6 +495,111 @@ impl Renderer {
         }
     }
 
+    /// Dibuja texto centrado horizontalmente.
+    fn draw_centered_text(&mut self, y: usize, text: &str, color: u32, scale: usize) {
+        let text_width = text_pixel_width(text, scale);
+        let x = self.width.saturating_sub(text_width) / 2;
+        self.draw_text(x, y, text, color, scale);
+    }
+
+    /// Fondo del menu con bandas y lineas de alerta discretas.
+    fn draw_menu_background(&mut self) {
+        for y in 0..self.height {
+            let shade = if y < self.height / 2 {
+                12 + y as u32 * 18 / self.height.max(1) as u32
+            } else {
+                24_u32.saturating_sub((y - self.height / 2) as u32 * 14 / self.height.max(1) as u32)
+            };
+            let color = rgb(shade + 4, shade + 7, shade + 5);
+            let row_start = y * self.width;
+            self.buffer[row_start..row_start + self.width].fill(color);
+        }
+
+        for x in (0..self.width).step_by(48) {
+            self.fill_rect(x, 0, 1, self.height, 0x172027);
+        }
+
+        for y in (0..self.height).step_by(36) {
+            self.fill_rect(0, y, self.width, 1, 0x141c22);
+        }
+
+        self.fill_rect(0, 0, self.width, 8, 0x6e1c1c);
+        self.fill_rect(0, self.height.saturating_sub(8), self.width, 8, 0x6e1c1c);
+    }
+
+    /// Boton del menu con borde de seleccion.
+    fn draw_menu_button(
+        &mut self,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+        label: &str,
+        selected: bool,
+    ) {
+        let border_color = if selected { 0xffc857 } else { 0x4f6472 };
+        let fill_color = if selected { 0x26313a } else { 0x141b21 };
+        let text_color = if selected { 0xffffff } else { 0xb3c0c8 };
+
+        self.fill_rect(x, y, width, height, border_color);
+        self.fill_rect(
+            x + 3,
+            y + 3,
+            width.saturating_sub(6),
+            height.saturating_sub(6),
+            fill_color,
+        );
+
+        if selected {
+            self.fill_rect(x + 8, y + 8, 6, height.saturating_sub(16), 0xff5a1f);
+            self.fill_rect(
+                x + width.saturating_sub(14),
+                y + 8,
+                6,
+                height.saturating_sub(16),
+                0xff5a1f,
+            );
+        }
+
+        let scale = 3;
+        let text_x = x + width.saturating_sub(text_pixel_width(label, scale)) / 2;
+        let text_y = y + height.saturating_sub(5 * scale) / 2;
+        self.draw_text(text_x, text_y, label, text_color, scale);
+    }
+
+    /// Panel reutilizable para pantallas informativas del menu.
+    fn draw_info_panel(&mut self, title: &str, lines: &[&str]) {
+        self.draw_centered_text(78, title, 0xf5f3e7, 6);
+
+        let panel_width = 760.min(self.width.saturating_sub(48));
+        let panel_height = 300.min(self.height.saturating_sub(180));
+        let panel_x = self.width.saturating_sub(panel_width) / 2;
+        let panel_y = 170;
+
+        self.fill_rect(panel_x, panel_y, panel_width, panel_height, 0x4f6472);
+        self.fill_rect(
+            panel_x + 3,
+            panel_y + 3,
+            panel_width.saturating_sub(6),
+            panel_height.saturating_sub(6),
+            0x10161b,
+        );
+
+        let mut y = panel_y + 32;
+
+        for line in lines {
+            self.draw_centered_text(y, line, 0xbfd0d8, 3);
+            y += 32;
+        }
+
+        self.draw_centered_text(
+            self.height.saturating_sub(48),
+            "ENTER O ESPACIO VOLVER",
+            0xffc857,
+            3,
+        );
+    }
+
     /// Dibuja un caracter individual de la fuente bitmap.
     fn draw_char(&mut self, x: usize, y: usize, ch: char, color: u32, scale: usize) {
         let Some(pattern) = glyph(ch) else {
@@ -661,6 +831,11 @@ fn shade_color(color: u32, factor: f32) -> u32 {
 /// Empaca componentes RGB en el formato `0xRRGGBB`.
 fn rgb(r: u32, g: u32, b: u32) -> u32 {
     (r.min(255) << 16) | (g.min(255) << 8) | b.min(255)
+}
+
+/// Calcula ancho aproximado de una cadena con la fuente bitmap.
+fn text_pixel_width(text: &str, scale: usize) -> usize {
+    text.chars().count() * 4 * scale
 }
 
 /// Patron bitmap de una letra o numero para el HUD.

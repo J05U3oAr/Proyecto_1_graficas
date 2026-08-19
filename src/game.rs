@@ -5,7 +5,7 @@
 
 use std::time::{Duration, Instant};
 
-use minifb::{Key, Scale, ScaleMode, Window, WindowOptions};
+use minifb::{Key, KeyRepeat, Scale, ScaleMode, Window, WindowOptions};
 
 use crate::{
     chaser::{Chaser, ChaserEvent},
@@ -42,6 +42,10 @@ pub struct Game {
     message_timer: f32,
     /// Indica si ya se centro el mouse al menos una vez.
     mouse_centered: bool,
+    /// Pantalla activa del juego.
+    screen: GameScreen,
+    /// Opcion seleccionada en el menu principal.
+    menu_selection: usize,
 }
 
 impl Game {
@@ -49,7 +53,7 @@ impl Game {
     pub fn new() -> Result<Self, minifb::Error> {
         let (window_width, window_height) = window_size();
         let mut window = Window::new(
-            "SITIO-19 - Protocolo de Contencion",
+            "RUN FROM YE",
             window_width,
             window_height,
             WindowOptions {
@@ -88,36 +92,146 @@ impl Game {
             message: "FIND ACCESS CARD",
             message_timer: MESSAGE_DURATION,
             mouse_centered: false,
+            screen: GameScreen::MainMenu,
+            menu_selection: 0,
         })
     }
 
-    /// Ejecuta el loop principal hasta cerrar la ventana o presionar Escape.
+    /// Ejecuta el loop principal hasta cerrar la ventana o salir desde el menu.
     pub fn run(&mut self) -> Result<(), minifb::Error> {
-        while self.window.is_open() && !self.window.is_key_down(Key::Escape) {
+        while self.window.is_open() {
             let now = Instant::now();
             let dt = (now - self.previous_frame).as_secs_f32();
             self.previous_frame = now;
 
-            let mouse_delta_x = self.read_mouse_delta_x();
-            let input = InputState::from_window(&self.window, mouse_delta_x);
-            self.player.update(&input, &self.map, dt);
-            self.update_chaser(dt);
-            self.update_interactions(dt);
-            self.update_fps(now);
-
-            self.renderer.render(
-                &self.map,
-                &self.player,
-                &self.chaser,
-                self.displayed_fps,
-                self.message,
-            );
+            if !self.update_screen(dt, now) {
+                break;
+            }
 
             self.window
                 .update_with_buffer(self.renderer.buffer(), SCREEN_WIDTH, SCREEN_HEIGHT)?;
         }
 
         Ok(())
+    }
+
+    /// Actualiza la pantalla activa y dibuja el frame correspondiente.
+    fn update_screen(&mut self, dt: f32, now: Instant) -> bool {
+        match self.screen {
+            GameScreen::MainMenu => self.update_main_menu(),
+            GameScreen::Instructions => self.update_instructions(),
+            GameScreen::About => self.update_about(),
+            GameScreen::Playing => self.update_playing(dt, now),
+        }
+    }
+
+    /// Lee navegacion del menu principal y dibuja sus opciones.
+    fn update_main_menu(&mut self) -> bool {
+        const MENU_OPTIONS: usize = 4;
+
+        self.window.set_title("RUN FROM YE");
+
+        if self.window.is_key_pressed(Key::Escape, KeyRepeat::No) {
+            return false;
+        }
+
+        if self.window.is_key_pressed(Key::Up, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::W, KeyRepeat::No)
+        {
+            self.menu_selection = if self.menu_selection == 0 {
+                MENU_OPTIONS - 1
+            } else {
+                self.menu_selection - 1
+            };
+        }
+
+        if self.window.is_key_pressed(Key::Down, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::S, KeyRepeat::No)
+        {
+            self.menu_selection = (self.menu_selection + 1) % MENU_OPTIONS;
+        }
+
+        if self.window.is_key_pressed(Key::Enter, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::Space, KeyRepeat::No)
+        {
+            match self.menu_selection {
+                0 => self.start_new_game(),
+                1 => self.screen = GameScreen::Instructions,
+                2 => self.screen = GameScreen::About,
+                3 => return false,
+                _ => {}
+            }
+        }
+
+        self.renderer.render_main_menu(self.menu_selection);
+        true
+    }
+
+    /// Dibuja la pantalla de instrucciones hasta que el jugador vuelva.
+    fn update_instructions(&mut self) -> bool {
+        if self.window.is_key_pressed(Key::Escape, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::Enter, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::Space, KeyRepeat::No)
+        {
+            self.screen = GameScreen::MainMenu;
+        }
+
+        self.renderer.render_instructions_screen();
+        true
+    }
+
+    /// Dibuja la pantalla de contexto narrativo hasta que el jugador vuelva.
+    fn update_about(&mut self) -> bool {
+        if self.window.is_key_pressed(Key::Escape, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::Enter, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::Space, KeyRepeat::No)
+        {
+            self.screen = GameScreen::MainMenu;
+        }
+
+        self.renderer.render_about_screen();
+        true
+    }
+
+    /// Actualiza una partida en curso.
+    fn update_playing(&mut self, dt: f32, now: Instant) -> bool {
+        if self.window.is_key_pressed(Key::Escape, KeyRepeat::No) {
+            self.screen = GameScreen::MainMenu;
+            self.mouse_centered = false;
+            return true;
+        }
+
+        let mouse_delta_x = self.read_mouse_delta_x();
+        let input = InputState::from_window(&self.window, mouse_delta_x);
+        self.player.update(&input, &self.map, dt);
+        self.update_chaser(dt);
+        self.update_interactions(dt);
+        self.update_fps(now);
+
+        self.renderer.render(
+            &self.map,
+            &self.player,
+            &self.chaser,
+            self.displayed_fps,
+            self.message,
+        );
+
+        true
+    }
+
+    /// Reinicia el estado jugable y entra al nivel.
+    fn start_new_game(&mut self) {
+        self.map = Map::level_one();
+        let (player_x, player_y, player_angle) = self.map.player_spawn();
+        let (chaser_x, chaser_y) = self.map.chaser_spawn();
+
+        self.player = Player::new(player_x, player_y, player_angle);
+        self.chaser = Chaser::new(chaser_x, chaser_y);
+        self.message = "FIND ACCESS CARD";
+        self.message_timer = MESSAGE_DURATION;
+        self.previous_frame = Instant::now();
+        self.mouse_centered = false;
+        self.screen = GameScreen::Playing;
     }
 
     /// Calcula cuanto se movio el cursor horizontalmente desde el frame anterior.
@@ -148,10 +262,8 @@ impl Game {
             self.frame_counter = 0;
             self.fps_timer = now;
 
-            self.window.set_title(&format!(
-                "SITIO-19 | FPS: {}",
-                self.displayed_fps
-            ));
+            self.window
+                .set_title(&format!("RUN FROM YE | FPS: {}", self.displayed_fps));
         }
     }
 
@@ -195,6 +307,15 @@ impl Game {
             "REACH EXIT"
         }
     }
+}
+
+/// Pantallas de alto nivel controladas por el loop principal.
+#[derive(Clone, Copy)]
+enum GameScreen {
+    MainMenu,
+    Instructions,
+    About,
+    Playing,
 }
 
 /// Tamano real de la ventana. En fullscreen se usa la resolucion del monitor.
