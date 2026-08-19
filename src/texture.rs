@@ -24,43 +24,47 @@ pub fn wall_texel(tile: u8, x: usize, y: usize) -> u32 {
     }
 }
 
-/// Textura de ladrillo/piedra para paredes normales.
+/// Textura de bloque de concreto para los pasillos del complejo.
 fn stone_brick(x: usize, y: usize) -> u32 {
     let row = y / 16;
-    // Desfase por fila para que los ladrillos no queden alineados verticalmente.
+    // Desfase por fila para que los bloques no queden alineados verticalmente.
     let shifted_x = (x + (row % 2) * 16) % TEXTURE_SIZE;
     let mortar = y % 16 == 0 || y % 16 == 15 || shifted_x % 32 == 0 || shifted_x % 32 == 31;
     let grain = noise(x, y, 11) as i32 - 4;
 
     if mortar {
-        rgb(43, 63, 76)
+        // Junta oscura, casi sin luz ambiental.
+        rgb(24, 27, 26)
     } else {
-        rgb_i(103 + grain, 151 + grain, 176 + grain)
+        // Concreto lavado, con un tinte verdoso de luz fluorescente enferma.
+        rgb_i(118 + grain, 128 + grain, 118 + grain)
     }
 }
 
-/// Textura de puerta con barras, marco, refuerzos y remaches.
+/// Textura de compuerta de contencion con franjas de peligro y remaches.
 fn gate(x: usize, y: usize) -> u32 {
     let border = x < 4 || x > 59 || y < 4 || y > 59;
-    let bar = x % 16 < 5;
-    let brace = x.abs_diff(y) < 3 || (TEXTURE_SIZE - 1 - x).abs_diff(y) < 3;
+    let hazard_stripe = ((x as i32 + y as i32) / 6) % 2 == 0;
     let rivet = (x % 16).abs_diff(8) <= 2 && (y % 16).abs_diff(8) <= 2;
-    let highlight = x % 16 == 5;
+    let center_seam = x.abs_diff(TEXTURE_SIZE / 2) < 2;
 
     if rivet {
-        rgb(255, 239, 166)
-    } else if border || brace {
-        rgb(154, 90, 20)
-    } else if bar {
-        rgb(238, 174, 56)
-    } else if highlight {
-        rgb(255, 210, 99)
+        rgb(255, 214, 74)
+    } else if center_seam {
+        rgb(18, 18, 20)
+    } else if border {
+        // Franja de peligro amarillo/negro alrededor del marco.
+        if hazard_stripe {
+            rgb(255, 196, 0)
+        } else {
+            rgb(20, 20, 22)
+        }
     } else {
-        rgb(75, 47, 31)
+        rgb(46, 49, 53)
     }
 }
 
-/// Textura de panel metalico con uniones, remaches y rayones.
+/// Textura de panel metalico de mantenimiento con uniones, remaches y rayones.
 fn metal_panel(x: usize, y: usize) -> u32 {
     let seam = x % 32 == 0 || y % 32 == 0;
     let rivet_centered = (x % 32).abs_diff(16) <= 3 && (y % 32).abs_diff(16) <= 3;
@@ -68,31 +72,33 @@ fn metal_panel(x: usize, y: usize) -> u32 {
     let grain = noise(x, y, 29) as i32 - 5;
 
     if rivet_centered {
-        rgb(255, 176, 76)
+        rgb(226, 232, 235)
     } else if seam {
-        rgb(82, 72, 64)
+        rgb(28, 32, 35)
     } else if scratch {
-        rgb(251, 190, 118)
+        rgb(200, 210, 214)
     } else {
-        rgb_i(185 + grain, 105 + grain, 43 + grain / 2)
+        // Acero azulado, frio y aseptico.
+        rgb_i(120 + grain, 130 + grain, 138 + grain)
     }
 }
 
-/// Textura de ruinas con bloques, grietas y musgo.
+/// Textura de sector colapsado con grietas y contaminacion biologica.
 fn cracked_ruins(x: usize, y: usize) -> u32 {
     let block_line = x % 21 == 0 || y % 18 == 0;
     let crack = (x * 5 + y * 9) % 41 < 2 || (x * 11).abs_diff(y * 7) % 53 < 2;
-    let moss = y > 42 && noise(x, y, 7) > 10;
+    let growth = y > 42 && noise(x, y, 7) > 10;
     let grain = noise(x, y, 43) as i32 - 7;
 
-    if moss {
-        rgb(80, 128, 91)
+    if growth {
+        // Crecimiento organico toxico, un aviso de que algo salio mal aqui.
+        rgb(58, 138, 46)
     } else if crack {
-        rgb(48, 34, 60)
+        rgb(8, 9, 8)
     } else if block_line {
-        rgb(77, 58, 91)
+        rgb(46, 52, 46)
     } else {
-        rgb_i(143 + grain, 103 + grain / 2, 184 + grain)
+        rgb_i(96 + grain / 2, 108 + grain, 96 + grain / 2)
     }
 }
 

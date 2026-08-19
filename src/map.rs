@@ -182,25 +182,25 @@ impl Map {
         if tile == TILE_KEY {
             self.set_tile(tile_x, tile_y, TILE_FLOOR);
             self.has_key = true;
-            return Some("KEY FOUND");
+            return Some("ACCESS CARD FOUND");
         }
 
         if tile == TILE_SWITCH {
             if self.has_key {
                 self.switch_pressed = true;
-                return Some("GATE OPEN");
+                return Some("DOOR UNLOCKED");
             }
 
-            return Some("FIND KEY FIRST");
+            return Some("NEED ACCESS CARD");
         }
 
         if tile == TILE_EXIT {
             if self.gate_open() {
                 self.completed = true;
-                return Some("LEVEL COMPLETE");
+                return Some("SITE SECURED");
             }
 
-            return Some("EXIT LOCKED");
+            return Some("EXIT SEALED");
         }
 
         None
