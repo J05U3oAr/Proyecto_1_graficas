@@ -245,6 +245,40 @@ impl Renderer {
         self.draw_centered_text(self.height.saturating_sub(48), "ESC MAIN MENU", 0x9db4c4, 3);
     }
 
+    /// Dibuja la pantalla de derrota con opciones para continuar.
+    pub fn render_game_over_screen(&mut self, level_number: usize, selected_index: usize) {
+        self.draw_menu_background();
+
+        self.draw_centered_text(72, "YE TE AH ATRAPADO", 0xff5a1f, 7);
+        self.draw_centered_text(136, "LA PARED TE ALCANZO", 0xffc857, 4);
+        self.draw_centered_text(178, &format!("NIVEL {}", level_number), 0xbfd0d8, 3);
+
+        let options = ["SEGUIR MISMO NIVEL", "MENU PRINCIPAL"];
+        let button_width = 420;
+        let button_height = 48;
+        let button_x = self.width.saturating_sub(button_width) / 2;
+        let mut button_y = 250;
+
+        for (index, label) in options.iter().enumerate() {
+            self.draw_menu_button(
+                button_x,
+                button_y,
+                button_width,
+                button_height,
+                label,
+                index == selected_index,
+            );
+            button_y += 64;
+        }
+
+        self.draw_centered_text(
+            self.height.saturating_sub(48),
+            "W S O FLECHAS MOVER    ENTER ELEGIR    ESC MENU",
+            0x9db4c4,
+            2,
+        );
+    }
+
     /// Dibuja las paredes visibles usando raycasting columna por columna.
     fn draw_walls(&mut self, map: &Map, player: &Player) {
         let dir_x = player.angle.cos();

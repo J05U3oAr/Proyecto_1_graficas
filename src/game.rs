@@ -51,6 +51,8 @@ pub struct Game {
     menu_selection: usize,
     /// Opcion seleccionada en la pantalla de niveles.
     level_selection: usize,
+    /// Opcion seleccionada en la pantalla de derrota.
+    game_over_selection: usize,
     /// Nivel actual, indexado desde cero.
     current_level: usize,
 }
@@ -103,6 +105,7 @@ impl Game {
             screen: GameScreen::MainMenu,
             menu_selection: 0,
             level_selection: 0,
+            game_over_selection: 0,
             current_level: 0,
         })
     }
@@ -134,6 +137,7 @@ impl Game {
             GameScreen::About => self.update_about(),
             GameScreen::Playing => self.update_playing(dt, now),
             GameScreen::LevelSuccess => self.update_level_success(),
+            GameScreen::GameOver => self.update_game_over(),
         }
     }
 
@@ -269,6 +273,42 @@ impl Game {
         true
     }
 
+    /// Dibuja la pantalla de derrota y permite reintentar o volver al menu.
+    fn update_game_over(&mut self) -> bool {
+        const GAME_OVER_OPTIONS: usize = 2;
+
+        self.audio.pause_chaser();
+
+        if self.window.is_key_pressed(Key::Escape, KeyRepeat::No) {
+            self.screen = GameScreen::MainMenu;
+            return true;
+        }
+
+        if self.window.is_key_pressed(Key::Up, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::W, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::Down, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::S, KeyRepeat::No)
+        {
+            self.game_over_selection = (self.game_over_selection + 1) % GAME_OVER_OPTIONS;
+        }
+
+        if self.window.is_key_pressed(Key::Enter, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::Space, KeyRepeat::No)
+        {
+            match self.game_over_selection {
+                0 => self.load_level(self.current_level),
+                1 => self.screen = GameScreen::MainMenu,
+                _ => {}
+            }
+
+            return true;
+        }
+
+        self.renderer
+            .render_game_over_screen(self.current_level + 1, self.game_over_selection);
+        true
+    }
+
     /// Actualiza una partida en curso.
     fn update_playing(&mut self, dt: f32, now: Instant) -> bool {
         if self.window.is_key_pressed(Key::Escape, KeyRepeat::No) {
@@ -287,6 +327,13 @@ impl Game {
         }
 
         self.update_chaser(dt);
+
+        if matches!(self.screen, GameScreen::GameOver) {
+            self.renderer
+                .render_game_over_screen(self.current_level + 1, self.game_over_selection);
+            return true;
+        }
+
         self.update_interactions(dt);
         self.update_fps(now);
         self.audio
@@ -366,8 +413,17 @@ impl Game {
                 ChaserEvent::Lost => "ANOMALY LOST",
                 ChaserEvent::HitPlayer => {
                     self.player.take_hit_and_respawn();
-                    self.chaser.reset();
-                    "CONTACT REINITIALIZING"
+
+                    if self.player.lives == 0 {
+                        self.screen = GameScreen::GameOver;
+                        self.mouse_centered = false;
+                        self.game_over_selection = 0;
+                        self.audio.pause_chaser();
+                        "YE TE AH ATRAPADO"
+                    } else {
+                        self.chaser.reset();
+                        "CONTACT REINITIALIZING"
+                    }
                 }
             };
             self.message_timer = MESSAGE_DURATION;
@@ -427,6 +483,7 @@ enum GameScreen {
     About,
     Playing,
     LevelSuccess,
+    GameOver,
 }
 
 /// Tamano real de la ventana. En fullscreen se usa la resolucion del monitor.

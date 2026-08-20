@@ -98,8 +98,11 @@ impl Player {
 
     /// Aplica dano y devuelve al jugador al punto inicial.
     pub fn take_hit_and_respawn(&mut self) {
-        self.lives = self.lives.saturating_sub(1).max(1);
-        self.respawn();
+        self.lives = self.lives.saturating_sub(1);
+
+        if self.lives > 0 {
+            self.respawn();
+        }
     }
 
     /// Restaura posicion, angulo y estado temporal de hazard.
