@@ -2,6 +2,7 @@
 //!
 //! Este archivo solo conecta los modulos y arranca el loop principal.
 
+mod audio;
 mod chaser;
 mod config;
 mod game;

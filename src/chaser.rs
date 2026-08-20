@@ -11,8 +11,9 @@ use std::{
 
 use crate::{
     config::{
-        CHASER_HIT_DISTANCE, CHASER_LOSE_DISTANCE, CHASER_RADIUS, CHASER_REPATH_INTERVAL,
-        CHASER_SPEED, CHASER_WAKE_DISTANCE,
+        CHASER_DISGUST_DURATION, CHASER_DISGUST_SPEED, CHASER_HIT_DISTANCE, CHASER_LOSE_DISTANCE,
+        CHASER_RADIUS, CHASER_REPATH_INTERVAL, CHASER_SPEED, CHASER_WAKE_DISTANCE,
+        SOUND_ABILITY_RANGE,
     },
     map::Map,
     player::Player,
@@ -40,6 +41,7 @@ pub struct Chaser {
     spawn_x: f32,
     spawn_y: f32,
     active: bool,
+    disgust_timer: f32,
     path: Vec<(i32, i32)>,
     repath_timer: f32,
     patrol_target: Option<(i32, i32)>,
@@ -63,6 +65,7 @@ impl Chaser {
             spawn_x: x,
             spawn_y: y,
             active: false,
+            disgust_timer: 0.0,
             path: Vec::new(),
             repath_timer: 0.0,
             patrol_target: None,
@@ -77,11 +80,30 @@ impl Chaser {
         self.active
     }
 
+    /// Indica si la pared esta retrocediendo por disgusto.
+    pub fn disgusted(&self) -> bool {
+        self.disgust_timer > 0.0
+    }
+
+    /// Activa el modo de disgusto si el sonido llega hasta la pared.
+    pub fn disgust(&mut self, player: &Player) -> bool {
+        if self.distance_to_player(player) > SOUND_ABILITY_RANGE {
+            return false;
+        }
+
+        self.active = true;
+        self.disgust_timer = CHASER_DISGUST_DURATION;
+        self.path.clear();
+        self.patrol_target = None;
+        true
+    }
+
     /// Restaura la pared a su posicion inicial y la deja dormida.
     pub fn reset(&mut self) {
         self.x = self.spawn_x;
         self.y = self.spawn_y;
         self.active = false;
+        self.disgust_timer = 0.0;
         self.path.clear();
         self.repath_timer = 0.0;
         self.patrol_target = None;
@@ -98,6 +120,12 @@ impl Chaser {
         }
 
         let distance_to_player = self.distance_to_player(player);
+
+        if self.disgust_timer > 0.0 {
+            self.disgust_timer = (self.disgust_timer - dt).max(0.0);
+            self.repel_from_player(map, player, dt);
+            return None;
+        }
 
         if !self.active {
             if distance_to_player <= CHASER_WAKE_DISTANCE {
@@ -178,6 +206,51 @@ impl Chaser {
         } else {
             self.path.clear();
         }
+    }
+
+    fn repel_from_player(&mut self, map: &Map, player: &Player, dt: f32) {
+        let mut direction_x = self.x - player.x;
+        let mut direction_y = self.y - player.y;
+        let distance = direction_x.hypot(direction_y);
+
+        if distance <= 0.001 {
+            direction_x = -player.angle.cos();
+            direction_y = -player.angle.sin();
+        } else {
+            direction_x /= distance;
+            direction_y /= distance;
+        }
+
+        let step = CHASER_DISGUST_SPEED * dt;
+        let candidates = [
+            (direction_x, direction_y),
+            (direction_y, -direction_x),
+            (-direction_y, direction_x),
+        ];
+
+        for (move_x, move_y) in candidates {
+            if self.try_move(map, move_x * step, move_y * step) {
+                break;
+            }
+        }
+    }
+
+    fn try_move(&mut self, map: &Map, delta_x: f32, delta_y: f32) -> bool {
+        let start_x = self.x;
+        let start_y = self.y;
+        let next_x = self.x + delta_x;
+
+        if map.can_stand_at(next_x, self.y, CHASER_RADIUS) {
+            self.x = next_x;
+        }
+
+        let next_y = self.y + delta_y;
+
+        if map.can_stand_at(self.x, next_y, CHASER_RADIUS) {
+            self.y = next_y;
+        }
+
+        (self.x - start_x).abs() > f32::EPSILON || (self.y - start_y).abs() > f32::EPSILON
     }
 
     fn patrol(&mut self, map: &Map, dt: f32) {

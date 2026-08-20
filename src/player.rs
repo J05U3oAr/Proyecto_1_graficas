@@ -1,11 +1,11 @@
 //! Movimiento y estado del jugador.
 //!
 //! Este modulo convierte acciones de input en desplazamiento dentro del mapa,
-//! aplicando colisiones, dash, vida y respawn.
+//! aplicando colisiones, habilidad sonora, vida y respawn.
 
 use crate::{
     config::{
-        COLLISION_STEP, DASH_COOLDOWN, DASH_DISTANCE, MOUSE_SENSITIVITY, MOVE_SPEED, PLAYER_RADIUS,
+        COLLISION_STEP, MOUSE_SENSITIVITY, MOVE_SPEED, PLAYER_RADIUS, SOUND_ABILITY_COOLDOWN,
     },
     input::InputState,
     map::Map,
@@ -21,8 +21,8 @@ pub struct Player {
     pub angle: f32,
     /// Vidas actuales.
     pub lives: u8,
-    /// Tiempo restante antes de poder usar dash otra vez.
-    dash_cooldown: f32,
+    /// Tiempo restante antes de poder usar la habilidad sonora otra vez.
+    sound_ability_cooldown: f32,
     /// Posicion X de respawn.
     spawn_x: f32,
     /// Posicion Y de respawn.
@@ -39,21 +39,22 @@ impl Player {
             y,
             angle,
             lives: 3,
-            dash_cooldown: 0.0,
+            sound_ability_cooldown: 0.0,
             spawn_x: x,
             spawn_y: y,
             spawn_angle: angle,
         }
     }
 
-    /// Progreso normalizado del cooldown del dash, util para dibujarlo en HUD.
-    pub fn dash_cooldown_ratio(&self) -> f32 {
-        (self.dash_cooldown / DASH_COOLDOWN).clamp(0.0, 1.0)
+    /// Progreso normalizado del cooldown de la habilidad sonora, util para dibujarlo en HUD.
+    pub fn sound_ability_cooldown_ratio(&self) -> f32 {
+        (self.sound_ability_cooldown / SOUND_ABILITY_COOLDOWN).clamp(0.0, 1.0)
     }
 
-    /// Actualiza mirada con mouse, movimiento, colisiones y dash.
-    pub fn update(&mut self, input: &InputState, map: &Map, dt: f32) {
-        self.dash_cooldown = (self.dash_cooldown - dt).max(0.0);
+    /// Actualiza mirada con mouse, movimiento, colisiones y habilidad sonora.
+    /// Devuelve `true` si la habilidad se activo durante este frame.
+    pub fn update(&mut self, input: &InputState, map: &Map, dt: f32) -> bool {
+        self.sound_ability_cooldown = (self.sound_ability_cooldown - dt).max(0.0);
         self.angle += input.mouse_delta_x * MOUSE_SENSITIVITY;
 
         let dir_x = self.angle.cos();
@@ -85,13 +86,14 @@ impl Player {
             delta_y += side_y * movement_step;
         }
 
-        // Primero se aplica el movimiento normal; luego el dash si fue presionado.
         self.move_with_collision(delta_x, delta_y, map);
 
-        if input.dash && self.dash_cooldown <= 0.0 {
-            self.move_with_collision(dir_x * DASH_DISTANCE, dir_y * DASH_DISTANCE, map);
-            self.dash_cooldown = DASH_COOLDOWN;
+        if input.sound_ability && self.sound_ability_cooldown <= 0.0 {
+            self.sound_ability_cooldown = SOUND_ABILITY_COOLDOWN;
+            return true;
         }
+
+        false
     }
 
     /// Aplica dano y devuelve al jugador al punto inicial.

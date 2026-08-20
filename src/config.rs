@@ -21,10 +21,10 @@ pub const PLAYER_RADIUS: f32 = 0.22;
 /// Tamano del plano de camara; controla el campo de vision.
 pub const FOV_FACTOR: f32 = 0.66;
 
-/// Distancia que avanza el jugador al usar dash.
-pub const DASH_DISTANCE: f32 = 1.35;
-/// Tiempo que debe pasar antes de volver a usar dash.
-pub const DASH_COOLDOWN: f32 = 2.4;
+/// Tiempo que debe pasar antes de volver a emitir el sonido de disgusto.
+pub const SOUND_ABILITY_COOLDOWN: f32 = 2.4;
+/// Distancia maxima a la que el sonido afecta a la pared perseguidora.
+pub const SOUND_ABILITY_RANGE: f32 = 7.5;
 /// Tamano maximo de cada sub-paso al mover con colisiones.
 pub const COLLISION_STEP: f32 = 0.07;
 /// Duracion de los mensajes temporales del HUD.
@@ -46,6 +46,10 @@ pub const CHASER_RADIUS: f32 = 0.22;
 pub const CHASER_HIT_DISTANCE: f32 = 0.56;
 /// Frecuencia con la que recalcula su ruta hacia el jugador.
 pub const CHASER_REPATH_INTERVAL: f32 = 0.18;
+/// Duracion del estado de disgusto provocado por la habilidad sonora.
+pub const CHASER_DISGUST_DURATION: f32 = 1.75;
+/// Velocidad con la que la pared retrocede cuando el sonido le disgusta.
+pub const CHASER_DISGUST_SPEED: f32 = 3.1;
 
 /// Tamano en pixeles de cada celda del minimapa.
 pub const MINIMAP_CELL_SIZE: usize = 6;

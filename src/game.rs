@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use minifb::{Key, KeyRepeat, Scale, ScaleMode, Window, WindowOptions};
 
 use crate::{
+    audio::play_disgust_sound,
     chaser::{Chaser, ChaserEvent},
     config::{BORDERLESS_FULLSCREEN, MESSAGE_DURATION, SCREEN_HEIGHT, SCREEN_WIDTH, TARGET_FPS},
     input::InputState,
@@ -24,7 +25,7 @@ pub struct Game {
     renderer: Renderer,
     /// Mapa actual y estado de sus interacciones.
     map: Map,
-    /// Jugador, incluyendo posicion, angulo, vida y dash.
+    /// Jugador, incluyendo posicion, angulo, vida y habilidad sonora.
     player: Player,
     /// Pared que se activa por rango y persigue al jugador.
     chaser: Chaser,
@@ -203,7 +204,12 @@ impl Game {
 
         let mouse_delta_x = self.read_mouse_delta_x();
         let input = InputState::from_window(&self.window, mouse_delta_x);
-        self.player.update(&input, &self.map, dt);
+        let sound_used = self.player.update(&input, &self.map, dt);
+
+        if sound_used {
+            self.activate_disgust_sound();
+        }
+
         self.update_chaser(dt);
         self.update_interactions(dt);
         self.update_fps(now);
@@ -281,6 +287,18 @@ impl Game {
             };
             self.message_timer = MESSAGE_DURATION;
         }
+    }
+
+    /// Reproduce el sonido de la habilidad y repele a la pared si esta cerca.
+    fn activate_disgust_sound(&mut self) {
+        play_disgust_sound();
+
+        self.message = if self.chaser.disgust(&self.player) {
+            "ANOMALY DISGUSTED"
+        } else {
+            "SOUND ECHOES"
+        };
+        self.message_timer = MESSAGE_DURATION;
     }
 
     /// Procesa pickups, switch, gate y mensajes de objetivo.

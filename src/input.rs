@@ -18,8 +18,8 @@ pub struct InputState {
     pub strafe_left: bool,
     /// Desplazarse lateralmente hacia la derecha.
     pub strafe_right: bool,
-    /// Dash de un solo pulso; no se mantiene al dejar la tecla presionada.
-    pub dash: bool,
+    /// Habilidad sonora de un solo pulso; no se mantiene al dejar la tecla presionada.
+    pub sound_ability: bool,
 }
 
 impl InputState {
@@ -35,7 +35,7 @@ impl InputState {
             strafe_right: window.is_key_down(Key::D)
                 || window.is_key_down(Key::Right)
                 || window.is_key_down(Key::C),
-            dash: window.is_key_pressed(Key::Q, KeyRepeat::No),
+            sound_ability: window.is_key_pressed(Key::Q, KeyRepeat::No),
         }
     }
 }

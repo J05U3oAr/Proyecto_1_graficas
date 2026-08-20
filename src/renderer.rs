@@ -19,6 +19,7 @@ use crate::{
 
 const SPRITE_CHASER_IDLE: u8 = 10;
 const SPRITE_CHASER_ACTIVE: u8 = 11;
+const SPRITE_CHASER_DISGUSTED: u8 = 12;
 
 /// Renderer basado en un buffer de pixeles RGB.
 pub struct Renderer {
@@ -34,6 +35,8 @@ pub struct Renderer {
     depth_buffer: Vec<f32>,
     /// Imagen opcional usada como sprite del perseguidor.
     chaser_texture: Option<SpriteTexture>,
+    /// Imagen opcional usada cuando el perseguidor esta disgustado.
+    disgust_chaser_texture: Option<SpriteTexture>,
 }
 
 /// Textura RGB cargada desde un archivo de imagen.
@@ -66,7 +69,11 @@ impl Renderer {
             buffer: background.clone(),
             background,
             depth_buffer: vec![f32::INFINITY; width],
-            chaser_texture: load_chaser_texture(),
+            chaser_texture: load_chaser_texture(
+                "chaser",
+                &["chaser.png", "chaser.jpg", "chaser.jpeg"],
+            ),
+            disgust_chaser_texture: load_chaser_texture("disgust chaser", &["disgust_chase.png"]),
         }
     }
 
@@ -127,7 +134,7 @@ impl Renderer {
                 "S O FLECHA ABAJO RETROCEDER",
                 "A D O FLECHAS MOVERSE LATERAL",
                 "MOUSE GIRAR CAMARA",
-                "Q USAR DASH",
+                "Q EMITIR SONIDO",
                 "BUSCA LA TARJETA ACTIVA EL TERMINAL",
                 "ABRE LA PUERTA Y LLEGA A LA SALIDA",
             ],
@@ -205,7 +212,9 @@ impl Renderer {
             }
         }
 
-        let chaser_tile = if chaser.active() {
+        let chaser_tile = if chaser.disgusted() {
+            SPRITE_CHASER_DISGUSTED
+        } else if chaser.active() {
             SPRITE_CHASER_ACTIVE
         } else {
             SPRITE_CHASER_IDLE
@@ -234,7 +243,10 @@ impl Renderer {
             }
 
             let screen_x = ((self.width as f32 / 2.0) * (1.0 + transform_x / transform_y)) as i32;
-            let size_scale = if matches!(tile, SPRITE_CHASER_IDLE | SPRITE_CHASER_ACTIVE) {
+            let size_scale = if matches!(
+                tile,
+                SPRITE_CHASER_IDLE | SPRITE_CHASER_ACTIVE | SPRITE_CHASER_DISGUSTED
+            ) {
                 0.96
             } else {
                 0.46
@@ -323,7 +335,13 @@ impl Renderer {
 
         let chaser_x = origin_x as i32 + (chaser.x * scale as f32) as i32;
         let chaser_y = origin_y as i32 + (chaser.y * scale as f32) as i32;
-        let chaser_color = if chaser.active() { 0xe63946 } else { 0x9aa4ad };
+        let chaser_color = if chaser.disgusted() {
+            0x72efdd
+        } else if chaser.active() {
+            0xe63946
+        } else {
+            0x9aa4ad
+        };
         self.fill_rect(
             (chaser_x - player_radius).max(0) as usize,
             (chaser_y - player_radius).max(0) as usize,
@@ -332,10 +350,10 @@ impl Renderer {
             chaser_color,
         );
 
-        let cooldown_ratio = player.dash_cooldown_ratio();
+        let cooldown_ratio = player.sound_ability_cooldown_ratio();
 
         if cooldown_ratio > 0.0 {
-            self.draw_dash_cooldown_indicator(
+            self.draw_sound_ability_cooldown_indicator(
                 (origin_x + map_width / 2) as i32,
                 (origin_y + map_height + 24) as i32,
                 cooldown_ratio,
@@ -360,34 +378,48 @@ impl Renderer {
         self.draw_text(
             12,
             96,
-            if chaser.active() {
+            if chaser.disgusted() {
+                "ANOMALY REPULSED"
+            } else if chaser.active() {
                 "ANOMALY HUNTING"
             } else {
                 "ANOMALY DORMANT"
             },
-            if chaser.active() { 0xff6b6b } else { 0xa9b4c4 },
+            if chaser.disgusted() {
+                0x72efdd
+            } else if chaser.active() {
+                0xff6b6b
+            } else {
+                0xa9b4c4
+            },
             2,
         );
         self.draw_text(12, self.height.saturating_sub(34), message, 0xffffff, 3);
         self.draw_text(
             12,
             self.height.saturating_sub(54),
-            "MOUSE TURN  A D STRAFE  Q DASH  ESC EXIT",
+            "MOUSE TURN  A D STRAFE  Q SOUND  ESC EXIT",
             0xa9b4c4,
             2,
         );
     }
 
-    /// Indicador circular del cooldown del dash.
-    fn draw_dash_cooldown_indicator(&mut self, center_x: i32, center_y: i32, ratio: f32) {
+    /// Indicador circular del cooldown de la habilidad sonora.
+    fn draw_sound_ability_cooldown_indicator(&mut self, center_x: i32, center_y: i32, ratio: f32) {
         self.fill_circle(center_x, center_y, 15, 0x101319);
-        self.fill_clockwise_circle_slice(center_x, center_y, 12, ratio, 0xffc857);
+        self.fill_clockwise_circle_slice(center_x, center_y, 12, ratio, 0x72efdd);
         self.fill_circle(center_x, center_y, 7, 0x202631);
         self.fill_circle(center_x, center_y, 3, 0xffffff);
     }
 
     /// Devuelve el color de un sprite, usando textura externa para el chaser.
     fn sample_sprite_color(&self, tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> {
+        if tile == SPRITE_CHASER_DISGUSTED {
+            if let Some(texture) = &self.disgust_chaser_texture {
+                return texture.sample(local_x, local_y, size);
+            }
+        }
+
         if matches!(tile, SPRITE_CHASER_IDLE | SPRITE_CHASER_ACTIVE) {
             if let Some(texture) = &self.chaser_texture {
                 return texture
@@ -663,20 +695,19 @@ impl SpriteTexture {
     }
 }
 
-fn load_chaser_texture() -> Option<SpriteTexture> {
-    for path in chaser_texture_paths() {
+fn load_chaser_texture(label: &str, asset_names: &[&str]) -> Option<SpriteTexture> {
+    for path in chaser_texture_paths(asset_names) {
         if let Some(texture) = load_sprite_texture(&path) {
-            eprintln!("Loaded chaser texture: {}", path.display());
+            eprintln!("Loaded {label} texture: {}", path.display());
             return Some(texture);
         }
     }
 
-    eprintln!("Chaser texture not found. Using procedural fallback.");
+    eprintln!("{label} texture not found. Using procedural fallback.");
     None
 }
 
-fn chaser_texture_paths() -> Vec<PathBuf> {
-    let asset_names = ["chaser.png", "chaser.jpg", "chaser.jpeg"];
+fn chaser_texture_paths(asset_names: &[&str]) -> Vec<PathBuf> {
     let mut roots = Vec::new();
 
     roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"));
@@ -693,7 +724,11 @@ fn chaser_texture_paths() -> Vec<PathBuf> {
 
     roots
         .into_iter()
-        .flat_map(|root| asset_names.map(|asset_name| root.join(asset_name)))
+        .flat_map(|root| {
+            asset_names
+                .iter()
+                .map(move |asset_name| root.join(asset_name))
+        })
         .collect()
 }
 
@@ -865,33 +900,43 @@ fn sprite_color(tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> 
                 None
             }
         }
-        SPRITE_CHASER_IDLE | SPRITE_CHASER_ACTIVE => {
+        SPRITE_CHASER_IDLE | SPRITE_CHASER_ACTIVE | SPRITE_CHASER_DISGUSTED => {
             let inside = nx.abs() < 0.72 && ny.abs() < 0.88;
             let border = nx.abs() > 0.62 || ny.abs() > 0.78;
             let mortar = local_y.rem_euclid((size / 5).max(4)) <= 1
                 || (local_x + (local_y / 12) * 7).rem_euclid((size / 4).max(5)) <= 1;
             let alert_crack =
                 tile == SPRITE_CHASER_ACTIVE && (local_x * 3 + local_y * 5).rem_euclid(31) < 3;
+            let disgust_crack =
+                tile == SPRITE_CHASER_DISGUSTED && (local_x * 7 + local_y * 2).rem_euclid(29) < 4;
 
             if !inside {
                 None
             } else if alert_crack {
                 Some(0xff5a1f)
+            } else if disgust_crack {
+                Some(0x72efdd)
             } else if border {
                 Some(if tile == SPRITE_CHASER_ACTIVE {
                     0x4a1010
+                } else if tile == SPRITE_CHASER_DISGUSTED {
+                    0x164a45
                 } else {
                     0x2a2d2f
                 })
             } else if mortar {
                 Some(if tile == SPRITE_CHASER_ACTIVE {
                     0x9c2a2a
+                } else if tile == SPRITE_CHASER_DISGUSTED {
+                    0x2a8c84
                 } else {
                     0x3a3d3f
                 })
             } else {
                 Some(if tile == SPRITE_CHASER_ACTIVE {
                     0x6e1c1c
+                } else if tile == SPRITE_CHASER_DISGUSTED {
+                    0x24645e
                 } else {
                     0x4a4f52
                 })
