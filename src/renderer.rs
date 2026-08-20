@@ -124,6 +124,39 @@ impl Renderer {
         );
     }
 
+    /// Dibuja la seleccion de nivel disponible antes de iniciar partida.
+    pub fn render_level_select_screen(&mut self, selected_index: usize, level_count: usize) {
+        self.draw_menu_background();
+
+        self.draw_centered_text(78, "SELECT LEVEL", 0xf5f3e7, 7);
+        self.draw_centered_text(136, "CHOOSE CONTAINMENT ROUTE", 0x9db4c4, 3);
+
+        let button_width = 340;
+        let button_height = 44;
+        let button_x = self.width.saturating_sub(button_width) / 2;
+        let mut button_y = 210;
+
+        for index in 0..level_count {
+            let label = format!("LEVEL {}", index + 1);
+            self.draw_menu_button(
+                button_x,
+                button_y,
+                button_width,
+                button_height,
+                &label,
+                index == selected_index,
+            );
+            button_y += 58;
+        }
+
+        self.draw_centered_text(
+            self.height.saturating_sub(42),
+            "W S O FLECHAS MOVER    ENTER ELEGIR    ESC VOLVER",
+            0x7f8c95,
+            2,
+        );
+    }
+
     /// Dibuja la pantalla de controles y objetivo inmediato.
     pub fn render_instructions_screen(&mut self) {
         self.draw_menu_background();
@@ -154,6 +187,62 @@ impl Renderer {
                 "EXPLORA RECOGE LA TARJETA Y ESCAPA",
             ],
         );
+    }
+
+    /// Dibuja la pantalla de exito al completar un nivel.
+    pub fn render_level_success_screen(&mut self, level_number: usize, has_next_level: bool) {
+        self.draw_menu_background();
+
+        let title = if has_next_level {
+            format!("LEVEL {} SECURED", level_number)
+        } else {
+            "ALL LEVELS SECURED".to_string()
+        };
+        let subtitle = if has_next_level {
+            "NEXT LEVEL READY"
+        } else {
+            "SITE FULLY CONTAINED"
+        };
+        let action = if has_next_level {
+            "ENTER CONTINUE"
+        } else {
+            "ENTER MAIN MENU"
+        };
+
+        self.draw_centered_text(86, &title, 0xf5f3e7, 7);
+        self.draw_centered_text(150, subtitle, 0xffc857, 4);
+
+        let panel_width = 700.min(self.width.saturating_sub(48));
+        let panel_height = 180.min(self.height.saturating_sub(220));
+        let panel_x = self.width.saturating_sub(panel_width) / 2;
+        let panel_y = 220;
+
+        self.fill_rect(panel_x, panel_y, panel_width, panel_height, 0x4f6472);
+        self.fill_rect(
+            panel_x + 3,
+            panel_y + 3,
+            panel_width.saturating_sub(6),
+            panel_height.saturating_sub(6),
+            0x10161b,
+        );
+        self.fill_rect(
+            panel_x + 14,
+            panel_y + 14,
+            8,
+            panel_height.saturating_sub(28),
+            0x52b788,
+        );
+        self.fill_rect(
+            panel_x + panel_width.saturating_sub(22),
+            panel_y + 14,
+            8,
+            panel_height.saturating_sub(28),
+            0x52b788,
+        );
+
+        self.draw_centered_text(panel_y + 48, "ANOMALY ROUTE CLEARED", 0xbfd0d8, 3);
+        self.draw_centered_text(panel_y + 90, action, 0xffffff, 4);
+        self.draw_centered_text(self.height.saturating_sub(48), "ESC MAIN MENU", 0x9db4c4, 3);
     }
 
     /// Dibuja las paredes visibles usando raycasting columna por columna.

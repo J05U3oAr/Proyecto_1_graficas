@@ -49,6 +49,10 @@ pub struct Game {
     screen: GameScreen,
     /// Opcion seleccionada en el menu principal.
     menu_selection: usize,
+    /// Opcion seleccionada en la pantalla de niveles.
+    level_selection: usize,
+    /// Nivel actual, indexado desde cero.
+    current_level: usize,
 }
 
 impl Game {
@@ -78,7 +82,7 @@ impl Game {
             center_mouse(&window);
         }
 
-        let map = Map::level_one();
+        let map = Map::level(0).expect("level 1 exists");
         let (player_x, player_y, player_angle) = map.player_spawn();
         let (chaser_x, chaser_y) = map.chaser_spawn();
 
@@ -98,6 +102,8 @@ impl Game {
             mouse_centered: false,
             screen: GameScreen::MainMenu,
             menu_selection: 0,
+            level_selection: 0,
+            current_level: 0,
         })
     }
 
@@ -123,9 +129,11 @@ impl Game {
     fn update_screen(&mut self, dt: f32, now: Instant) -> bool {
         match self.screen {
             GameScreen::MainMenu => self.update_main_menu(),
+            GameScreen::LevelSelect => self.update_level_select(),
             GameScreen::Instructions => self.update_instructions(),
             GameScreen::About => self.update_about(),
             GameScreen::Playing => self.update_playing(dt, now),
+            GameScreen::LevelSuccess => self.update_level_success(),
         }
     }
 
@@ -159,7 +167,7 @@ impl Game {
             || self.window.is_key_pressed(Key::Space, KeyRepeat::No)
         {
             match self.menu_selection {
-                0 => self.start_new_game(),
+                0 => self.screen = GameScreen::LevelSelect,
                 1 => self.screen = GameScreen::Instructions,
                 2 => self.screen = GameScreen::About,
                 3 => return false,
@@ -168,6 +176,42 @@ impl Game {
         }
 
         self.renderer.render_main_menu(self.menu_selection);
+        true
+    }
+
+    /// Permite escoger cualquiera de los niveles disponibles.
+    fn update_level_select(&mut self) -> bool {
+        let level_count = Map::level_count();
+
+        if self.window.is_key_pressed(Key::Escape, KeyRepeat::No) {
+            self.screen = GameScreen::MainMenu;
+            return true;
+        }
+
+        if self.window.is_key_pressed(Key::Up, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::W, KeyRepeat::No)
+        {
+            self.level_selection = if self.level_selection == 0 {
+                level_count - 1
+            } else {
+                self.level_selection - 1
+            };
+        }
+
+        if self.window.is_key_pressed(Key::Down, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::S, KeyRepeat::No)
+        {
+            self.level_selection = (self.level_selection + 1) % level_count;
+        }
+
+        if self.window.is_key_pressed(Key::Enter, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::Space, KeyRepeat::No)
+        {
+            self.start_new_game(self.level_selection);
+        }
+
+        self.renderer
+            .render_level_select_screen(self.level_selection, level_count);
         true
     }
 
@@ -194,6 +238,34 @@ impl Game {
         }
 
         self.renderer.render_about_screen();
+        true
+    }
+
+    /// Dibuja la pantalla de exito y permite continuar al siguiente nivel.
+    fn update_level_success(&mut self) -> bool {
+        self.audio.pause_chaser();
+
+        if self.window.is_key_pressed(Key::Escape, KeyRepeat::No) {
+            self.screen = GameScreen::MainMenu;
+            return true;
+        }
+
+        if self.window.is_key_pressed(Key::Enter, KeyRepeat::No)
+            || self.window.is_key_pressed(Key::Space, KeyRepeat::No)
+        {
+            if self.current_level + 1 < Map::level_count() {
+                self.load_level(self.current_level + 1);
+            } else {
+                self.screen = GameScreen::MainMenu;
+            }
+
+            return true;
+        }
+
+        self.renderer.render_level_success_screen(
+            self.current_level + 1,
+            self.current_level + 1 < Map::level_count(),
+        );
         true
     }
 
@@ -232,8 +304,15 @@ impl Game {
     }
 
     /// Reinicia el estado jugable y entra al nivel.
-    fn start_new_game(&mut self) {
-        self.map = Map::level_one();
+    fn start_new_game(&mut self, level_index: usize) {
+        self.current_level = level_index;
+        self.load_level(self.current_level);
+    }
+
+    /// Carga un nivel y reinicia entidades temporales.
+    fn load_level(&mut self, level_index: usize) {
+        self.current_level = level_index;
+        self.map = Map::level(level_index).expect("level index validated before loading");
         let (player_x, player_y, player_angle) = self.map.player_spawn();
         let (chaser_x, chaser_y) = self.map.chaser_spawn();
 
@@ -314,6 +393,12 @@ impl Game {
         if let Some(message) = self.map.update_player_interactions(&mut self.player) {
             self.message = message;
             self.message_timer = MESSAGE_DURATION;
+
+            if self.map.completed() {
+                self.screen = GameScreen::LevelSuccess;
+                self.mouse_centered = false;
+                self.audio.pause_chaser();
+            }
         } else if self.message_timer <= 0.0 {
             self.message = self.current_goal_message();
         }
@@ -337,9 +422,11 @@ impl Game {
 #[derive(Clone, Copy)]
 enum GameScreen {
     MainMenu,
+    LevelSelect,
     Instructions,
     About,
     Playing,
+    LevelSuccess,
 }
 
 /// Tamano real de la ventana. En fullscreen se usa la resolucion del monitor.

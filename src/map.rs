@@ -36,9 +36,28 @@ pub struct Map {
     switch_pressed: bool,
     /// Indica si el jugador completo el nivel.
     completed: bool,
+    /// Posicion X, Y y angulo inicial del jugador.
+    player_spawn: (f32, f32, f32),
+    /// Posicion inicial de la pared perseguidora.
+    chaser_spawn: (f32, f32),
 }
 
 impl Map {
+    /// Cantidad de niveles disponibles.
+    pub fn level_count() -> usize {
+        3
+    }
+
+    /// Construye un nivel por indice.
+    pub fn level(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::level_one()),
+            1 => Some(Self::level_two()),
+            2 => Some(Self::level_three()),
+            _ => None,
+        }
+    }
+
     /// Construye el primer nivel desde texto ASCII.
     pub fn level_one() -> Self {
         let rows = [
@@ -69,6 +88,76 @@ impl Map {
             "1111111111111111111111111111111",
         ];
 
+        Self::from_rows(&rows, (2.5, 1.5, 0.15), (27.5, 23.5))
+    }
+
+    /// Construye el segundo nivel con objetivos repartidos en extremos opuestos.
+    pub fn level_two() -> Self {
+        let rows = [
+            "1111111111111111111111111111111",
+            "1000001000000000500000000000001",
+            "1015101031000010101101105810101",
+            "1000500000000010003000301010001",
+            "1010500010511010353010111010101",
+            "1000100000500000001000001000001",
+            "1010101050103011501010101011101",
+            "1000003000101000100010101000001",
+            "1011151110101510101150100051101",
+            "1000000010500050001000001000101",
+            "1030101050101010005015005100101",
+            "1010001000000000003050000000101",
+            "1011005111101010101000101501101",
+            "1010000010001000001000000000029",
+            "1010011015105150101151101111151",
+            "1010000000000000500000001000101",
+            "1013101510101011301010101050101",
+            "1000000010103000000000000010001",
+            "1051115110001000105110101510101",
+            "1010000000100000000010000000501",
+            "1010110131111110513013301010001",
+            "1000000010000010003000100010101",
+            "1017100000313011101010310000501",
+            "1010000000000000000010000010001",
+            "1111111111111111111111111111111",
+        ];
+
+        Self::from_rows(&rows, (2.5, 1.5, 0.15), (27.5, 21.5))
+    }
+
+    /// Construye el tercer nivel, iniciando al jugador desde el lado opuesto.
+    pub fn level_three() -> Self {
+        let rows = [
+            "1111111111111111111111111111111",
+            "1000000000000000000000001000001",
+            "1110151510001030001310551011101",
+            "1008000010101000001000000000001",
+            "1013101150101015135011100031101",
+            "1000100000100000100000300010001",
+            "1010003003130110100011110150301",
+            "1000100000100010101010000010029",
+            "1011111010100000111010101010001",
+            "1010000010001010003010001000101",
+            "1010115000305011103030001010111",
+            "1000000010000000000000000030001",
+            "1010101050301011101000511011101",
+            "1000001000000000000000700050101",
+            "1031513131151050110011111050101",
+            "1010000000000000100010000000501",
+            "1000101010111010101011111110101",
+            "1000101010005000101000001000101",
+            "1111500000100011501011101101501",
+            "1000001010103000000000100000001",
+            "1001311000101011001150531301101",
+            "1000000010101010000010100000001",
+            "1011011510001000100030311100101",
+            "1000000000000000300000000000001",
+            "1111111111111111111111111111111",
+        ];
+
+        Self::from_rows(&rows, (28.5, 23.5, 3.1), (3.5, 21.5))
+    }
+
+    fn from_rows(rows: &[&str], player_spawn: (f32, f32, f32), chaser_spawn: (f32, f32)) -> Self {
         let width = rows[0].len();
         let height = rows.len();
         debug_assert!(rows.iter().all(|row| row.len() == width));
@@ -85,6 +174,8 @@ impl Map {
             has_key: false,
             switch_pressed: false,
             completed: false,
+            player_spawn,
+            chaser_spawn,
         }
     }
 
@@ -100,12 +191,12 @@ impl Map {
 
     /// Posicion y angulo inicial del jugador.
     pub fn player_spawn(&self) -> (f32, f32, f32) {
-        (2.5, 1.5, 0.15)
+        self.player_spawn
     }
 
     /// Posicion inicial de la pared perseguidora.
     pub fn chaser_spawn(&self) -> (f32, f32) {
-        (27.5, 23.5)
+        self.chaser_spawn
     }
 
     /// Devuelve si el jugador ya recogio la llave.
