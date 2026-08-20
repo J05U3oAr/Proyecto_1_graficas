@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use minifb::{Key, KeyRepeat, Scale, ScaleMode, Window, WindowOptions};
 
 use crate::{
-    audio::play_disgust_sound,
+    audio::AudioSystem,
     chaser::{Chaser, ChaserEvent},
     config::{BORDERLESS_FULLSCREEN, MESSAGE_DURATION, SCREEN_HEIGHT, SCREEN_WIDTH, TARGET_FPS},
     input::InputState,
@@ -29,6 +29,8 @@ pub struct Game {
     player: Player,
     /// Pared que se activa por rango y persigue al jugador.
     chaser: Chaser,
+    /// Sistema de musica y efectos sonoros.
+    audio: AudioSystem,
     /// Tiempo del frame anterior para calcular delta time.
     previous_frame: Instant,
     /// Reloj usado para refrescar el contador visible de FPS.
@@ -86,6 +88,7 @@ impl Game {
             map,
             player: Player::new(player_x, player_y, player_angle),
             chaser: Chaser::new(chaser_x, chaser_y),
+            audio: AudioSystem::new(),
             previous_frame: Instant::now(),
             fps_timer: Instant::now(),
             frame_counter: 0,
@@ -199,6 +202,7 @@ impl Game {
         if self.window.is_key_pressed(Key::Escape, KeyRepeat::No) {
             self.screen = GameScreen::MainMenu;
             self.mouse_centered = false;
+            self.audio.pause_chaser();
             return true;
         }
 
@@ -213,6 +217,8 @@ impl Game {
         self.update_chaser(dt);
         self.update_interactions(dt);
         self.update_fps(now);
+        self.audio
+            .update_chaser_audio(&self.player, &self.chaser, !self.map.completed());
 
         self.renderer.render(
             &self.map,
@@ -291,7 +297,7 @@ impl Game {
 
     /// Reproduce el sonido de la habilidad y repele a la pared si esta cerca.
     fn activate_disgust_sound(&mut self) {
-        play_disgust_sound();
+        self.audio.play_disgust_sound();
 
         self.message = if self.chaser.disgust(&self.player) {
             "ANOMALY DISGUSTED"

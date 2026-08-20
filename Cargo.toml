@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 minifb = "0.27"
+rodio = "0.22.2"
 winapi = { version = "0.3", features = ["winuser"] }
 
 [profile.dev]

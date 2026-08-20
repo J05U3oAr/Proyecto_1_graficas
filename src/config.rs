@@ -22,7 +22,7 @@ pub const PLAYER_RADIUS: f32 = 0.22;
 pub const FOV_FACTOR: f32 = 0.66;
 
 /// Tiempo que debe pasar antes de volver a emitir el sonido de disgusto.
-pub const SOUND_ABILITY_COOLDOWN: f32 = 2.4;
+pub const SOUND_ABILITY_COOLDOWN: f32 = 7.0;
 /// Distancia maxima a la que el sonido afecta a la pared perseguidora.
 pub const SOUND_ABILITY_RANGE: f32 = 7.5;
 /// Tamano maximo de cada sub-paso al mover con colisiones.
@@ -47,7 +47,7 @@ pub const CHASER_HIT_DISTANCE: f32 = 0.56;
 /// Frecuencia con la que recalcula su ruta hacia el jugador.
 pub const CHASER_REPATH_INTERVAL: f32 = 0.18;
 /// Duracion del estado de disgusto provocado por la habilidad sonora.
-pub const CHASER_DISGUST_DURATION: f32 = 1.75;
+pub const CHASER_DISGUST_DURATION: f32 = 3.5;
 /// Velocidad con la que la pared retrocede cuando el sonido le disgusta.
 pub const CHASER_DISGUST_SPEED: f32 = 3.1;
 
