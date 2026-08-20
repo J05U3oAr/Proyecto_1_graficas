@@ -737,7 +737,13 @@ fn chaser_texture_paths(asset_names: &[&str]) -> Vec<PathBuf> {
 }
 
 fn load_sprite_texture(path: &Path) -> Option<SpriteTexture> {
-    let image = image::open(path).ok()?.to_rgba8();
+    let image = image::ImageReader::open(path)
+        .ok()?
+        .with_guessed_format()
+        .ok()?
+        .decode()
+        .ok()?
+        .to_rgba8();
     let (width, height) = image.dimensions();
     let pixels = image
         .pixels()
