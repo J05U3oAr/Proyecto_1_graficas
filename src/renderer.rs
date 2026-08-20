@@ -4,6 +4,8 @@
 //! raycaster de paredes, sprites billboard, minimapa, HUD y utilidades basicas
 //! para pintar formas/texto.
 
+use std::path::{Path, PathBuf};
+
 use crate::{
     chaser::Chaser,
     config::{FOV_FACTOR, MINIMAP_CELL_SIZE, MINIMAP_PADDING},
@@ -30,6 +32,15 @@ pub struct Renderer {
     background: Vec<u32>,
     /// Distancia de pared por columna, usada para ocultar sprites detras.
     depth_buffer: Vec<f32>,
+    /// Imagen opcional usada como sprite del perseguidor.
+    chaser_texture: Option<SpriteTexture>,
+}
+
+/// Textura RGB cargada desde un archivo de imagen.
+struct SpriteTexture {
+    width: usize,
+    height: usize,
+    pixels: Vec<u32>,
 }
 
 /// Resultado de lanzar un rayo contra el mapa.
@@ -55,6 +66,7 @@ impl Renderer {
             buffer: background.clone(),
             background,
             depth_buffer: vec![f32::INFINITY; width],
+            chaser_texture: load_chaser_texture(),
         }
     }
 
@@ -243,9 +255,12 @@ impl Renderer {
                 }
 
                 for y in start_y..=end_y {
-                    if let Some(color) =
-                        sprite_color(tile, stripe - start_x, y - start_y, sprite_size.max(1))
-                    {
+                    if let Some(color) = self.sample_sprite_color(
+                        tile,
+                        stripe - start_x,
+                        y - start_y,
+                        sprite_size.max(1),
+                    ) {
                         self.buffer[y as usize * self.width + stripe_index] = color;
                     }
                 }
@@ -369,6 +384,19 @@ impl Renderer {
         self.fill_clockwise_circle_slice(center_x, center_y, 12, ratio, 0xffc857);
         self.fill_circle(center_x, center_y, 7, 0x202631);
         self.fill_circle(center_x, center_y, 3, 0xffffff);
+    }
+
+    /// Devuelve el color de un sprite, usando textura externa para el chaser.
+    fn sample_sprite_color(&self, tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> {
+        if matches!(tile, SPRITE_CHASER_IDLE | SPRITE_CHASER_ACTIVE) {
+            if let Some(texture) = &self.chaser_texture {
+                return texture
+                    .sample(local_x, local_y, size)
+                    .map(|color| chaser_tint(color, tile == SPRITE_CHASER_ACTIVE));
+            }
+        }
+
+        sprite_color(tile, local_x, local_y, size)
     }
 
     /// Rellena una porcion circular en sentido horario.
@@ -614,6 +642,98 @@ impl Renderer {
             }
         }
     }
+}
+
+impl SpriteTexture {
+    fn sample(&self, local_x: i32, local_y: i32, size: i32) -> Option<u32> {
+        if local_x < 0 || local_y < 0 || local_x >= size || local_y >= size {
+            return None;
+        }
+
+        let texture_x = (local_x as usize * self.width / size.max(1) as usize).min(self.width - 1);
+        let texture_y =
+            (local_y as usize * self.height / size.max(1) as usize).min(self.height - 1);
+        let color = self.pixels[texture_y * self.width + texture_x];
+
+        if is_chaser_texture_transparent(color) {
+            None
+        } else {
+            Some(color)
+        }
+    }
+}
+
+fn load_chaser_texture() -> Option<SpriteTexture> {
+    for path in chaser_texture_paths() {
+        if let Some(texture) = load_sprite_texture(&path) {
+            eprintln!("Loaded chaser texture: {}", path.display());
+            return Some(texture);
+        }
+    }
+
+    eprintln!("Chaser texture not found. Using procedural fallback.");
+    None
+}
+
+fn chaser_texture_paths() -> Vec<PathBuf> {
+    let asset_names = ["chaser.png", "chaser.jpg", "chaser.jpeg"];
+    let mut roots = Vec::new();
+
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"));
+
+    if let Ok(current_dir) = std::env::current_dir() {
+        roots.push(current_dir.join("assets"));
+    }
+
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            roots.push(exe_dir.join("assets"));
+        }
+    }
+
+    roots
+        .into_iter()
+        .flat_map(|root| asset_names.map(|asset_name| root.join(asset_name)))
+        .collect()
+}
+
+fn load_sprite_texture(path: &Path) -> Option<SpriteTexture> {
+    let image = image::open(path).ok()?.to_rgba8();
+    let (width, height) = image.dimensions();
+    let pixels = image
+        .pixels()
+        .map(|pixel| {
+            let [red, green, blue, alpha] = pixel.0;
+
+            if alpha < 16 {
+                0xff00ff
+            } else {
+                rgb(red as u32, green as u32, blue as u32)
+            }
+        })
+        .collect();
+
+    Some(SpriteTexture {
+        width: width as usize,
+        height: height as usize,
+        pixels,
+    })
+}
+
+fn chaser_tint(color: u32, active: bool) -> u32 {
+    if active {
+        let red = (((color >> 16) & 0xff) + 42).min(255);
+        let green = (((color >> 8) & 0xff) * 72 / 100).min(255);
+        let blue = ((color & 0xff) * 72 / 100).min(255);
+
+        rgb(red, green, blue)
+    } else {
+        shade_color(color, 0.86)
+    }
+}
+
+fn is_chaser_texture_transparent(color: u32) -> bool {
+    color == 0xff00ff
 }
 
 /// Lanza un rayo desde el jugador y devuelve el primer tile bloqueante.

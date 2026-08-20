@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 minifb = "0.27"
 winapi = { version = "0.3", features = ["winuser"] }
 
