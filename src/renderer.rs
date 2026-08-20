@@ -336,7 +336,7 @@ impl Renderer {
         let chaser_x = origin_x as i32 + (chaser.x * scale as f32) as i32;
         let chaser_y = origin_y as i32 + (chaser.y * scale as f32) as i32;
         let chaser_color = if chaser.disgusted() {
-            0x72efdd
+            0xffc857
         } else if chaser.active() {
             0xe63946
         } else {
@@ -386,7 +386,7 @@ impl Renderer {
                 "ANOMALY DORMANT"
             },
             if chaser.disgusted() {
-                0x72efdd
+                0xffc857
             } else if chaser.active() {
                 0xff6b6b
             } else {
@@ -407,7 +407,7 @@ impl Renderer {
     /// Indicador circular del cooldown de la habilidad sonora.
     fn draw_sound_ability_cooldown_indicator(&mut self, center_x: i32, center_y: i32, ratio: f32) {
         self.fill_circle(center_x, center_y, 15, 0x101319);
-        self.fill_clockwise_circle_slice(center_x, center_y, 12, ratio, 0x72efdd);
+        self.fill_clockwise_circle_slice(center_x, center_y, 12, ratio, 0xffc857);
         self.fill_circle(center_x, center_y, 7, 0x202631);
         self.fill_circle(center_x, center_y, 3, 0xffffff);
     }
@@ -416,6 +416,10 @@ impl Renderer {
     fn sample_sprite_color(&self, tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> {
         if tile == SPRITE_CHASER_DISGUSTED {
             if let Some(texture) = &self.disgust_chaser_texture {
+                return texture.sample(local_x, local_y, size);
+            }
+
+            if let Some(texture) = &self.chaser_texture {
                 return texture.sample(local_x, local_y, size);
             }
         }
@@ -915,12 +919,12 @@ fn sprite_color(tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> 
             } else if alert_crack {
                 Some(0xff5a1f)
             } else if disgust_crack {
-                Some(0x72efdd)
+                Some(0xffc857)
             } else if border {
                 Some(if tile == SPRITE_CHASER_ACTIVE {
                     0x4a1010
                 } else if tile == SPRITE_CHASER_DISGUSTED {
-                    0x164a45
+                    0x4a3520
                 } else {
                     0x2a2d2f
                 })
@@ -928,7 +932,7 @@ fn sprite_color(tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> 
                 Some(if tile == SPRITE_CHASER_ACTIVE {
                     0x9c2a2a
                 } else if tile == SPRITE_CHASER_DISGUSTED {
-                    0x2a8c84
+                    0xa16a36
                 } else {
                     0x3a3d3f
                 })
@@ -936,7 +940,7 @@ fn sprite_color(tile: u8, local_x: i32, local_y: i32, size: i32) -> Option<u32> 
                 Some(if tile == SPRITE_CHASER_ACTIVE {
                     0x6e1c1c
                 } else if tile == SPRITE_CHASER_DISGUSTED {
-                    0x24645e
+                    0x7b4a24
                 } else {
                     0x4a4f52
                 })
