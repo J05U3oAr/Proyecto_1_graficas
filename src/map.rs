@@ -1,7 +1,8 @@
 //! Definicion del mapa y reglas de tiles.
 //!
-//! El mapa se guarda como una grilla 2D compacta. Cada celda contiene un
-//! numero que representa piso, pared, obstaculo, llave, switch o salida.
+//! Los niveles se escriben como mazes ASCII legibles. Cada caracter representa
+//! piso, pared, obstaculo, spawn u objetivo, y luego se convierte a una grilla
+//! compacta de tiles para colisiones, raycasting y pathfinding.
 
 use crate::player::Player;
 
@@ -60,112 +61,139 @@ impl Map {
 
     /// Construye el primer nivel desde texto ASCII.
     pub fn level_one() -> Self {
-        let rows = [
-            "1111111111111111111111111111111",
-            "1000100000001000180010000000301",
-            "1110111011301010105010111110101",
-            "1010000010001010001000100010001",
-            "1011111510111011111031101011101",
-            "1000100010100010000010000017001",
-            "1011101010101111111110111010111",
-            "1010001000100000000000100010101",
-            "1010111111101151131110101110101",
-            "1000100000100000100010301000029",
-            "1015301110111111101010101113111",
-            "1010001010000000101010100010001",
-            "1010111011111130101010111010101",
-            "1010100000100010001010001010101",
-            "1010101011501011111011103010101",
-            "1010103000001000001010001000101",
-            "1010111111101011101010111111501",
-            "1010100000001010300010000000101",
-            "1010101101101010151113111111101",
-            "1010001000001000100000000030001",
-            "1011115031111110111011111010111",
-            "1000001000100010001000100010001",
-            "1111101110101011100010105111101",
-            "1000000000101000000010000000001",
-            "1111111111111111111111111111111",
+        let maze = [
+            "+---+-------+---+---+---------+",
+            "| p |       |   |s  |       m |",
+            "+-+ +-- +-m | | | r | +---+ + |",
+            "| |     |   | |   |   |   |   |",
+            "| +-+--r| +-+ +---+ m-+ + +-- |",
+            "|   |   | |   |     |     |k  |",
+            "| +-+ | | | --+-----+ +-- | +-+",
+            "| |   |   |           |   | | |",
+            "| | +-+---+ --r-+m--+ | +-+ | |",
+            "|   |     |     |   | m |    dg",
+            "| |rm +-+ +-----+ | | | +-+m--+",
+            "| |   | |       | | | |   |   |",
+            "| | +-+ +-+---m | | | +-+ | | |",
+            "| | |     |   |   | |   | | | |",
+            "| | | + --r | +---+ +-- m | | |",
+            "| | | m     |     | |   |   | |",
+            "| | +------ | +-- | | --+---r |",
+            "| | |       | | m   |       | |",
+            "| | | +- -- | | |r--+m------+ |",
+            "| |   |     |   |         m   |",
+            "| +---r m-+-+-+ +-+ --+-- | --+",
+            "|     |   |   |   |   |   |   |",
+            "+---- +-- | | +--   | | r-+-- |",
+            "|         | |       |      e  |",
+            "+---------+-+-------+---------+",
         ];
 
-        Self::from_rows(&rows, (2.5, 1.5, 0.15), (27.5, 23.5))
+        Self::from_maze(&maze, 0.15)
     }
 
     /// Construye el segundo nivel con objetivos repartidos en extremos opuestos.
     pub fn level_two() -> Self {
-        let rows = [
-            "1111111111111111111111111111111",
-            "1000001000000000500000000000001",
-            "1015101031000010101101105810101",
-            "1000500000000010003000301010001",
-            "1010500010511010353010111010101",
-            "1000100000500000001000001000001",
-            "1010101050103011501010101011101",
-            "1000003000101000100010101000001",
-            "1011151110101510101150100051101",
-            "1000000010500050001000001000101",
-            "1030101050101010005015005100101",
-            "1010001000000000003050000000101",
-            "1011005111101010101000101501101",
-            "1010000010001000001000000000029",
-            "1010011015105150101151101111151",
-            "1010000000000000500000001000101",
-            "1013101510101011301010101050101",
-            "1000000010103000000000000010001",
-            "1051115110001000105110101510101",
-            "1010000000100000000010000000501",
-            "1010110131111110513013301010001",
-            "1000000010000010003000100010101",
-            "1017100000313011101010310000501",
-            "1010000000000000000010000010001",
-            "1111111111111111111111111111111",
+        let maze = [
+            "+-----+-----------------------+",
+            "| p   |         r             |",
+            "| +r+ | m+    | + -- -- rs| + |",
+            "|   r         |   m   m | |   |",
+            "| + r   + r-- | mrm + --+ | + |",
+            "|   |     r       |     |     |",
+            "| + | + r | m --r | | | | --- |",
+            "|     m   | |   |   | | |     |",
+            "| ---r--+ | |r+ | +-r |   r-+ |",
+            "|       | r   r   |     +   | |",
+            "| m + | r + + +   r +r  r+  | |",
+            "| |   |           m r       | |",
+            "| +-  r-+-- | + + |   + +r -+ |",
+            "| |     |   |     |          dg",
+            "| |  -- |r+ r+r + +-r-- +---+r|",
+            "| |             r       |   | |",
+            "| |m+ +r| | + --m + + + | r | |",
+            "|       | | m             |   |",
+            "| r---r-+   +   + r-+ + +r| + |",
+            "| |       |         |       r |",
+            "| | -- +m-+---+ r+m |mm + |   |",
+            "|       +     |   m   +   |e+ |",
+            "| |k+     m+m +-- + | m+    r |",
+            "| |                 |     |   |",
+            "+-+-----------------+-----+---+",
         ];
 
-        Self::from_rows(&rows, (2.5, 1.5, 0.15), (27.5, 21.5))
+        Self::from_maze(&maze, 0.15)
     }
 
     /// Construye el tercer nivel, iniciando al jugador desde el lado opuesto.
     pub fn level_three() -> Self {
-        let rows = [
-            "1111111111111111111111111111111",
-            "1000000000000000000000001000001",
-            "1110151510001030001310551011101",
-            "1008000010101000001000000000001",
-            "1013101150101015135011100031101",
-            "1000100000100000100000300010001",
-            "1010003003130110100011110150301",
-            "1000100000100010101010000010029",
-            "1011111010100000111010101010001",
-            "1010000010001010003010001000101",
-            "1010115000305011103030001010111",
-            "1000000010000000000000000030001",
-            "1010101050301011101000511011101",
-            "1000001000000000000000700050101",
-            "1031513131151050110011111050101",
-            "1010000000000000100010000000501",
-            "1000101010111010101011111110101",
-            "1000101010005000101000001000101",
-            "1111500000100011501011101101501",
-            "1000001010103000000000100000001",
-            "1001311000101011001150531301101",
-            "1000000010101010000010100000001",
-            "1011011510001000100030311100101",
-            "1000000000000000300000000000001",
-            "1111111111111111111111111111111",
+        let maze = [
+            "+-----------------------+-----+",
+            "|                       |     |",
+            "+-- +r+r|   | m   |m+ rr| --- |",
+            "|  s    | | |     |           |",
+            "| +m| --r | | +r|mr ---   m-- |",
+            "|   |     |     |     m   +   |",
+            "| +   m  m|m -+ |   +--- +r m |",
+            "|   |     |   | | | |     |  dg",
+            "| +-+-- | |     +-+ | + | |   |",
+            "| |     |   + |   m |   |   | |",
+            "| | --r   m r +-- m m   | + +-+",
+            "|       +                 m   |",
+            "| + + | r m + --- +   r-- --+ |",
+            "|     |               k   r | |",
+            "| m+r+m+m--r+ r +-  +---- r | |",
+            "| +             |   |       r |",
+            "|   | | | --- + | | +---+-- | |",
+            "|   | | |   r   | |     |   | |",
+            "+---r     |   --r | --+ +- +r |",
+            "|     | + | m         |       |",
+            "|  +m-+   | | +-  --r rm+m -- |",
+            "|  e    | | | |     + +       |",
+            "| -- --r|   |   +   m m---  + |",
+            "|               m           p |",
+            "+-----------------------------+",
         ];
 
-        Self::from_rows(&rows, (28.5, 23.5, 3.1), (3.5, 21.5))
+        Self::from_maze(&maze, 3.1)
     }
 
-    fn from_rows(rows: &[&str], player_spawn: (f32, f32, f32), chaser_spawn: (f32, f32)) -> Self {
-        let width = rows[0].len();
-        let height = rows.len();
-        debug_assert!(rows.iter().all(|row| row.len() == width));
-        // Convierte cada caracter numerico del mapa en su valor `u8`.
-        let tiles = rows
+    fn from_maze(rows: &[&str], player_angle: f32) -> Self {
+        let width = rows
             .iter()
-            .flat_map(|row| row.bytes().map(|value| value - b'0'))
-            .collect();
+            .map(|row| row.chars().count())
+            .max()
+            .expect("maze must have at least one row");
+        let height = rows.len();
+        let mut tiles = vec![TILE_WALL; width * height];
+        let mut player_spawn = None;
+        let mut chaser_spawn = None;
+
+        for (y, row) in rows.iter().enumerate() {
+            for (x, symbol) in row.chars().enumerate() {
+                let tile = match symbol {
+                    ' ' => TILE_FLOOR,
+                    '+' | '-' | '|' | '#' => TILE_WALL,
+                    'd' | 'D' => TILE_GATE,
+                    'm' | 'M' => TILE_METAL,
+                    'r' | 'R' => TILE_RUINS,
+                    'k' | 'K' => TILE_KEY,
+                    's' | 'S' => TILE_SWITCH,
+                    'g' | 'G' => TILE_EXIT,
+                    'p' | 'P' => {
+                        player_spawn = Some((x as f32 + 0.5, y as f32 + 0.5, player_angle));
+                        TILE_FLOOR
+                    }
+                    'e' | 'E' | 'c' | 'C' => {
+                        chaser_spawn = Some((x as f32 + 0.5, y as f32 + 0.5));
+                        TILE_FLOOR
+                    }
+                    _ => TILE_WALL,
+                };
+
+                tiles[y * width + x] = tile;
+            }
+        }
 
         Self {
             width,
@@ -174,8 +202,8 @@ impl Map {
             has_key: false,
             switch_pressed: false,
             completed: false,
-            player_spawn,
-            chaser_spawn,
+            player_spawn: player_spawn.expect("maze must include a player spawn marked with p"),
+            chaser_spawn: chaser_spawn.expect("maze must include a chaser spawn marked with e"),
         }
     }
 
@@ -314,5 +342,27 @@ impl Map {
         }
 
         self.tiles[y as usize * self.width + x as usize] = tile;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maze_symbols_are_converted_to_tiles_and_spawns() {
+        let map = Map::from_maze(&["+dm", "|pke", "|srg"], 1.25);
+
+        assert_eq!(map.width(), 4);
+        assert_eq!(map.height(), 3);
+        assert_eq!(map.player_spawn(), (1.5, 1.5, 1.25));
+        assert_eq!(map.chaser_spawn(), (3.5, 1.5));
+        assert_eq!(map.tile_at(0, 0), TILE_WALL);
+        assert_eq!(map.tile_at(1, 0), TILE_GATE);
+        assert_eq!(map.tile_at(2, 0), TILE_METAL);
+        assert_eq!(map.tile_at(2, 1), TILE_KEY);
+        assert_eq!(map.tile_at(1, 2), TILE_SWITCH);
+        assert_eq!(map.tile_at(2, 2), TILE_RUINS);
+        assert_eq!(map.tile_at(3, 2), TILE_EXIT);
     }
 }
